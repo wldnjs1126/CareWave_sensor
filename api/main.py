@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from aggregation.sensor_aggregator import aggregator
-from api.schemas import RadarFrameIn
+from api.schemas import RadarFrameBatchIn, RadarFrameIn
 from database.connection import engine
 
 
@@ -33,7 +33,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CareWave Sensor Ingest API",
-    version="1.0.0",
+    version="1.1.0",
     lifespan=lifespan,
 )
 
@@ -53,4 +53,22 @@ async def receive_sensor_frame(frame: RadarFrameIn):
         "sensor_id": frame.sensor_id,
         "subject_id": frame.subject_id,
         "frame_id": frame.frame_id,
+    }
+
+
+@app.post("/api/sensor/batch")
+async def receive_sensor_batch(batch: RadarFrameBatchIn):
+    for frame in batch.frames:
+        await aggregator.add_frame(frame.model_dump())
+
+    first = batch.frames[0]
+    last = batch.frames[-1]
+
+    return {
+        "status": "accepted",
+        "count": len(batch.frames),
+        "sensor_id": first.sensor_id,
+        "subject_id": first.subject_id,
+        "first_frame_id": first.frame_id,
+        "last_frame_id": last.frame_id,
     }
