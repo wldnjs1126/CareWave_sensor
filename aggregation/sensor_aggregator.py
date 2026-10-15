@@ -4,11 +4,35 @@ import asyncio
 import math
 from collections import Counter
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from database.sensor_raw_repository import save_sensor_raw
 
 
-WINDOW_SECONDS = 1.0
+KST = ZoneInfo("Asia/Seoul")
+WINDOW_SECONDS = 1
+
+
+def _now_kst_naive() -> datetime:
+    """Return current Korea time as a naive datetime for MySQL DATETIME."""
+    return datetime.now(KST).replace(tzinfo=None)
+
+
+def _normalize_timestamp(value: datetime | None) -> datetime:
+    """Normalize an incoming timestamp to Korea time without tzinfo."""
+    if value is None:
+        return _now_kst_naive()
+
+    if value.tzinfo is not None:
+        return value.astimezone(KST).replace(tzinfo=None)
+
+    # Naive timestamps are treated as Korea local time.
+    return value
+
+
+def _window_start(timestamp: datetime) -> datetime:
+    """Floor a timestamp to an exact whole-second boundary."""
+    return timestamp.replace(microsecond=0)
 
 
 def _avg(values):
@@ -35,17 +59,25 @@ def _mode(values):
 
 class SensorAggregator:
     def __init__(self):
-        self._buffers: dict[tuple[int, int | None], list[dict]] = {}
-        self._window_start: dict[tuple[int, int | None], datetime] = {}
+        # key = (sensor_id, subject_id, exact_window_start)
+        self._buffers: dict[
+            tuple[int, int | None, datetime],
+            list[dict],
+        ] = {}
         self._lock = asyncio.Lock()
 
     async def add_frame(self, frame: dict) -> None:
-        now = frame.get("timestamp") or datetime.now()
-        key = (frame["sensor_id"], frame.get("subject_id"))
+        timestamp = _normalize_timestamp(frame.get("timestamp"))
+        start = _window_start(timestamp)
+
+        sensor_id = frame["sensor_id"]
+        subject_id = frame.get("subject_id")
+        key = (sensor_id, subject_id, start)
 
         vx = frame.get("velocity_x")
         vy = frame.get("velocity_y")
         vz = frame.get("velocity_z")
+
         speed = frame.get("speed")
         if speed is None and None not in (vx, vy, vz):
             speed = math.sqrt(vx * vx + vy * vy + vz * vz)
@@ -55,39 +87,60 @@ class SensorAggregator:
             movement_level = speed
 
         sample = dict(frame)
-        sample["timestamp"] = now
+        sample["timestamp"] = timestamp
         sample["speed"] = speed
         sample["movement_level"] = movement_level
 
         async with self._lock:
-            if key not in self._buffers:
-                self._buffers[key] = []
-                self._window_start[key] = now
-            self._buffers[key].append(sample)
+            self._buffers.setdefault(key, []).append(sample)
 
     async def flush_expired(self) -> int:
-        now = datetime.now()
-        ready: list[tuple[tuple[int, int | None], list[dict], datetime]] = []
+        now = _now_kst_naive()
+        ready: list[
+            tuple[
+                tuple[int, int | None],
+                list[dict],
+                datetime,
+                datetime,
+            ]
+        ] = []
 
         async with self._lock:
-            for key, start in list(self._window_start.items()):
-                if now - start >= timedelta(seconds=WINDOW_SECONDS):
-                    frames = self._buffers.pop(key, [])
-                    self._window_start.pop(key, None)
-                    if frames:
-                        ready.append((key, frames, start))
+            for buffer_key in list(self._buffers.keys()):
+                sensor_id, subject_id, start = buffer_key
+                end = start + timedelta(seconds=WINDOW_SECONDS)
 
-        for key, frames, start in ready:
-            row = self._aggregate(key, frames, start)
+                if now >= end:
+                    frames = self._buffers.pop(buffer_key, [])
+                    if frames:
+                        ready.append(
+                            (
+                                (sensor_id, subject_id),
+                                frames,
+                                start,
+                                end,
+                            )
+                        )
+
+        for key, frames, start, end in ready:
+            row = self._aggregate(key, frames, start, end)
             await asyncio.to_thread(save_sensor_raw, row)
 
         return len(ready)
 
-    def _aggregate(self, key, frames: list[dict], start: datetime) -> dict:
+    def _aggregate(
+        self,
+        key: tuple[int, int | None],
+        frames: list[dict],
+        start: datetime,
+        end: datetime,
+    ) -> dict:
         sensor_id, subject_id = key
-        end = max(f["timestamp"] for f in frames)
 
-        presence_ratio = sum(1 for f in frames if bool(f.get("presence"))) / len(frames)
+        presence_ratio = (
+            sum(1 for f in frames if bool(f.get("presence")))
+            / len(frames)
+        )
 
         return {
             "sensor_id": sensor_id,
@@ -112,7 +165,7 @@ class SensorAggregator:
             "min_height": _min([f.get("height") for f in frames]),
             "avg_movement_level": _avg([f.get("movement_level") for f in frames]),
             "zone": _mode([f.get("zone") for f in frames]),
-            "created_at": datetime.now(),
+            "created_at": _now_kst_naive(),
         }
 
 
