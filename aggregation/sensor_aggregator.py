@@ -6,11 +6,15 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from database.sensor_raw_repository import save_sensor_raw
+from database.sensor_raw_repository import (
+    get_latest_window_end,
+    save_sensor_raw,
+)
 
 
 KST = ZoneInfo("Asia/Seoul")
 WINDOW_SECONDS = 1
+BATCH_CONTINUITY_TOLERANCE_SECONDS = 3
 
 
 def _now_kst_naive() -> datetime:
@@ -55,20 +59,25 @@ def _mode(values):
 
 class SensorAggregator:
     def __init__(self):
+        # Legacy single-frame endpoint buffer.
         # key = (sensor_id, subject_id, exact_window_start)
         self._buffers: dict[
             tuple[object, object | None, datetime],
             list[dict],
         ] = {}
+
+        # Batch endpoint continuity state.
+        # key = (sensor_id, subject_id)
+        # value = {"next_start": datetime, "last_frame_id": int | None}
+        self._batch_state: dict[
+            tuple[object, object | None],
+            dict,
+        ] = {}
+
         self._lock = asyncio.Lock()
 
-    async def add_frame(self, frame: dict) -> None:
+    def _prepare_sample(self, frame: dict) -> dict:
         timestamp = _normalize_timestamp(frame.get("timestamp"))
-        start = _window_start(timestamp)
-
-        sensor_id = frame["sensor_id"]
-        subject_id = frame.get("subject_id")
-        key = (sensor_id, subject_id, start)
 
         vx = frame.get("velocity_x")
         vy = frame.get("velocity_y")
@@ -87,8 +96,131 @@ class SensorAggregator:
         sample["speed"] = speed
         sample["movement_level"] = movement_level
 
+        return sample
+
+    async def add_frame(self, frame: dict) -> None:
+        sample = self._prepare_sample(frame)
+
+        timestamp = sample["timestamp"]
+        start = _window_start(timestamp)
+
+        sensor_id = sample["sensor_id"]
+        subject_id = sample.get("subject_id")
+        key = (sensor_id, subject_id, start)
+
         async with self._lock:
             self._buffers.setdefault(key, []).append(sample)
+
+    async def add_batch(
+        self,
+        frames: list[dict],
+        received_at: datetime | None = None,
+    ) -> dict:
+        """
+        Treat one ESP32 batch as one physical ~1 second sensor_raw window.
+
+        If radar frame IDs are continuous between batches, the next DB window
+        starts exactly where the previous one ended. This removes artificial
+        one-second holes caused only by HTTP/server arrival jitter.
+
+        If frame IDs are not continuous, we do NOT fabricate missing data.
+        The timeline is realigned to the current receive time, so a genuine
+        dropped batch/network outage can still appear as a real gap.
+        """
+        if not frames:
+            raise ValueError("batch must contain at least one frame")
+
+        received_at = _normalize_timestamp(received_at)
+        samples = [self._prepare_sample(frame) for frame in frames]
+
+        sensor_id = samples[0]["sensor_id"]
+        subject_id = samples[0].get("subject_id")
+        key = (sensor_id, subject_id)
+
+        for sample in samples:
+            if (
+                sample["sensor_id"] != sensor_id
+                or sample.get("subject_id") != subject_id
+            ):
+                raise ValueError(
+                    "all observations in one batch must share sensor_id and subject_id"
+                )
+
+        frame_ids = [
+            sample.get("frame_id")
+            for sample in samples
+            if sample.get("frame_id") is not None
+        ]
+
+        first_frame_id = frame_ids[0] if frame_ids else None
+        last_frame_id = frame_ids[-1] if frame_ids else None
+
+        # The batch contains roughly the preceding one second of radar data.
+        candidate_start = _window_start(
+            received_at - timedelta(seconds=WINDOW_SECONDS)
+        )
+
+        async with self._lock:
+            state = self._batch_state.get(key)
+
+            frame_sequence_continuous = (
+                state is not None
+                and state.get("last_frame_id") is not None
+                and first_frame_id is not None
+                and first_frame_id == state["last_frame_id"] + 1
+            )
+
+            if frame_sequence_continuous:
+                start = state["next_start"]
+
+            else:
+                latest_end = await asyncio.to_thread(
+                    get_latest_window_end,
+                    sensor_id,
+                    subject_id,
+                )
+
+                # On a normal service restart, continue from the latest DB row
+                # if it is close to the current batch time. On a long outage,
+                # realign to current time instead of inventing many seconds.
+                if latest_end is not None:
+                    time_difference = abs(
+                        (candidate_start - latest_end).total_seconds()
+                    )
+
+                    if time_difference <= BATCH_CONTINUITY_TOLERANCE_SECONDS:
+                        start = latest_end
+                    else:
+                        start = candidate_start
+                else:
+                    start = candidate_start
+
+            end = start + timedelta(seconds=WINDOW_SECONDS)
+
+            self._batch_state[key] = {
+                "next_start": end,
+                "last_frame_id": last_frame_id,
+            }
+
+        row = self._aggregate(
+            key,
+            samples,
+            start,
+            end,
+        )
+
+        await asyncio.to_thread(
+            save_sensor_raw,
+            row,
+        )
+
+        return {
+            "window_start": start,
+            "window_end": end,
+            "sample_count": row["sample_count"],
+            "first_frame_id": first_frame_id,
+            "last_frame_id": last_frame_id,
+        }
 
     async def flush_expired(self) -> int:
         now = _now_kst_naive()
@@ -127,8 +259,12 @@ class SensorAggregator:
 
         for index, sample in enumerate(samples):
             frame_id = sample.get("frame_id")
-            key = ("frame", frame_id) if frame_id is not None else ("sample", index)
-            grouped[key].append(sample)
+            group_key = (
+                ("frame", frame_id)
+                if frame_id is not None
+                else ("sample", index)
+            )
+            grouped[group_key].append(sample)
 
         return list(grouped.values())
 
@@ -164,7 +300,10 @@ class SensorAggregator:
         sensor_id, subject_id = key
 
         frame_groups = self._group_by_frame(samples)
-        frame_summaries = [self._summarize_frame(group) for group in frame_groups]
+        frame_summaries = [
+            self._summarize_frame(group)
+            for group in frame_groups
+        ]
 
         presence_ratio = (
             sum(1 for frame in frame_summaries if frame["presence"])
