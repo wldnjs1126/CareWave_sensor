@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI
 from sqlalchemy import text
@@ -8,6 +9,9 @@ from sqlalchemy import text
 from aggregation.sensor_aggregator import aggregator
 from api.schemas import RadarFrameBatchIn, RadarFrameIn
 from database.connection import engine
+
+
+KST = ZoneInfo("Asia/Seoul")
 
 
 async def _flush_loop():
@@ -34,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CareWave Sensor Ingest API",
-    version="1.1.1",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -48,7 +52,12 @@ def health():
 
 @app.post("/api/sensor/frame")
 async def receive_sensor_frame(frame: RadarFrameIn):
-    await aggregator.add_frame(frame.model_dump())
+    payload = frame.model_dump()
+    if payload.get("timestamp") is None:
+        payload["timestamp"] = datetime.now(KST).replace(tzinfo=None)
+
+    await aggregator.add_frame(payload)
+
     return {
         "status": "accepted",
         "sensor_id": frame.sensor_id,
@@ -59,10 +68,10 @@ async def receive_sensor_frame(frame: RadarFrameIn):
 
 @app.post("/api/sensor/batch")
 async def receive_sensor_batch(batch: RadarFrameBatchIn):
-    # Give every frame in one ESP32 batch the exact same server receive time.
-    # This guarantees a 1-second batch is not split across two DB windows
-    # just because request processing crosses a second boundary.
-    received_at = datetime.now()
+    # Every observation in one ESP32 batch receives the same KST timestamp.
+    # This prevents one physical 1-second batch from being split merely because
+    # server-side processing crosses a second boundary.
+    received_at = datetime.now(KST).replace(tzinfo=None)
 
     for frame in batch.frames:
         payload = frame.model_dump()
