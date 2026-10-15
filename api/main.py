@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI
 from sqlalchemy import text
@@ -33,7 +34,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CareWave Sensor Ingest API",
-    version="1.1.0",
+    version="1.1.1",
     lifespan=lifespan,
 )
 
@@ -58,8 +59,16 @@ async def receive_sensor_frame(frame: RadarFrameIn):
 
 @app.post("/api/sensor/batch")
 async def receive_sensor_batch(batch: RadarFrameBatchIn):
+    # Give every frame in one ESP32 batch the exact same server receive time.
+    # This guarantees a 1-second batch is not split across two DB windows
+    # just because request processing crosses a second boundary.
+    received_at = datetime.now()
+
     for frame in batch.frames:
-        await aggregator.add_frame(frame.model_dump())
+        payload = frame.model_dump()
+        if payload.get("timestamp") is None:
+            payload["timestamp"] = received_at
+        await aggregator.add_frame(payload)
 
     first = batch.frames[0]
     last = batch.frames[-1]
