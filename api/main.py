@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from aggregation.sensor_aggregator import aggregator
 from api.schemas import RadarFrameBatchIn, RadarFrameIn
+from api.control import router as control_router
 from database.connection import engine
 
 
@@ -42,6 +43,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.include_router(control_router)
 
 @app.get("/health")
 def health():
