@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RadarFrameIn(BaseModel):
@@ -33,3 +33,7 @@ class RadarFrameIn(BaseModel):
     presence: bool = False
 
     timestamp: datetime | None = None
+
+
+class RadarFrameBatchIn(BaseModel):
+    frames: list[RadarFrameIn] = Field(min_length=1, max_length=64)
