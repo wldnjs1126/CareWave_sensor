@@ -38,7 +38,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CareWave Sensor Ingest API",
-    version="1.2.0",
+    version="1.2.1",
     lifespan=lifespan,
 )
 
@@ -68,9 +68,6 @@ async def receive_sensor_frame(frame: RadarFrameIn):
 
 @app.post("/api/sensor/batch")
 async def receive_sensor_batch(batch: RadarFrameBatchIn):
-    # Every observation in one ESP32 batch receives the same KST timestamp.
-    # This prevents one physical 1-second batch from being split merely because
-    # server-side processing crosses a second boundary.
     received_at = datetime.now(KST).replace(tzinfo=None)
 
     for frame in batch.frames:
@@ -82,9 +79,14 @@ async def receive_sensor_batch(batch: RadarFrameBatchIn):
     first = batch.frames[0]
     last = batch.frames[-1]
 
+    frame_ids = [frame.frame_id for frame in batch.frames]
+    non_null_frame_ids = {frame_id for frame_id in frame_ids if frame_id is not None}
+    frame_count = len(non_null_frame_ids) if non_null_frame_ids else len(batch.frames)
+
     return {
         "status": "accepted",
-        "count": len(batch.frames),
+        "observation_count": len(batch.frames),
+        "frame_count": frame_count,
         "sensor_id": first.sensor_id,
         "subject_id": first.subject_id,
         "first_frame_id": first.frame_id,
