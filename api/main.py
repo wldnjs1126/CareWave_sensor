@@ -1,9 +1,13 @@
 import asyncio
+
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from aggregation.sensor_aggregator import aggregator
@@ -14,6 +18,17 @@ from database.connection import engine
 
 KST = ZoneInfo("Asia/Seoul")
 
+BASE_DIR = (
+    Path(__file__)
+    .resolve()
+    .parent
+    .parent
+)
+
+VISUALIZATION_DIR = (
+    BASE_DIR
+    / "visualization"
+)
 
 async def _flush_loop():
     while True:
@@ -44,6 +59,26 @@ app = FastAPI(
 )
 
 app.include_router(control_router)
+
+app.mount(
+    "/dashboard-static",
+    StaticFiles(
+        directory=VISUALIZATION_DIR
+    ),
+    name="dashboard-static",
+)
+
+
+@app.get(
+    "/dashboard",
+    include_in_schema=False,
+)
+def dashboard():
+
+    return FileResponse(
+        VISUALIZATION_DIR
+        / "index.html"
+    )
 
 @app.get("/health")
 def health():

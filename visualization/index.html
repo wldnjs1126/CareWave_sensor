@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>CareWave Monitoring</title>
+
+    <link
+        rel="stylesheet"
+        href="/dashboard-static/dashboard.css"
+    >
+</head>
+
+<body>
+
+<div class="app">
+
+    <!-- 상단 -->
+    <header class="topbar">
+
+        <div>
+            <h1>CareWave</h1>
+            <p>Non-Camera Senior Monitoring System</p>
+        </div>
+
+        <div class="connection">
+
+            <span
+                id="onlineDot"
+                class="dot offline"
+            ></span>
+
+            <span id="onlineText">
+                OFFLINE
+            </span>
+
+        </div>
+
+    </header>
+
+
+    <!-- 센서 제어 -->
+    <section class="control-panel">
+
+        <div>
+
+            <h2>Sensor #1</h2>
+
+            <div class="state-row">
+
+                <span>Radar State</span>
+
+                <strong id="radarState">
+                    UNKNOWN
+                </strong>
+
+            </div>
+
+            <div class="state-row">
+
+                <span>Frame ID</span>
+
+                <strong id="frameId">
+                    -
+                </strong>
+
+            </div>
+
+            <div class="state-row">
+
+                <span>Last Seen</span>
+
+                <strong id="lastSeen">
+                    -
+                </strong>
+
+            </div>
+
+        </div>
+
+
+        <div class="button-group">
+
+            <button
+                id="startButton"
+                class="control-button start"
+            >
+                SENSOR ON
+            </button>
+
+            <button
+                id="stopButton"
+                class="control-button stop"
+            >
+                SENSOR OFF
+            </button>
+
+            <button
+                id="restartButton"
+                class="control-button restart"
+            >
+                RESTART
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- 메인 -->
+    <main class="main-grid">
+
+        <!-- 병실 -->
+        <section class="room-panel">
+
+            <div class="panel-title">
+
+                <div>
+                    <h2>Real-Time Room View</h2>
+                    <p>4 m × 5 m monitoring area</p>
+                </div>
+
+                <span class="live-badge">
+                    LIVE
+                </span>
+
+            </div>
+
+
+            <div class="room">
+
+                <div class="bed">
+                    BED
+                </div>
+
+                <div class="radar">
+                    RADAR
+                </div>
+
+                <div class="door">
+                    DOOR
+                </div>
+
+
+                <!-- 다음 단계에서 실시간 사람 위치 표시 -->
+                <div
+                    id="target"
+                    class="target hidden"
+                >
+                    1
+                </div>
+
+
+                <div
+                    id="waitingMessage"
+                    class="waiting-message"
+                >
+                    실시간 Target 연결 준비 중
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- 센서 데이터 -->
+        <section class="data-panel">
+
+            <div class="panel-title">
+
+                <div>
+                    <h2>Sensor Data</h2>
+                    <p>Current radar values</p>
+                </div>
+
+            </div>
+
+
+            <div class="data-list">
+
+                <div class="data-row">
+                    <span>Presence</span>
+                    <strong id="presence">-</strong>
+                </div>
+
+                <div class="data-row">
+                    <span>Target ID</span>
+                    <strong id="targetId">-</strong>
+                </div>
+
+                <div class="data-row">
+                    <span>X</span>
+                    <strong id="xValue">-</strong>
+                </div>
+
+                <div class="data-row">
+                    <span>Y</span>
+                    <strong id="yValue">-</strong>
+                </div>
+
+                <div class="data-row">
+                    <span>Z</span>
+                    <strong id="zValue">-</strong>
+                </div>
+
+                <div class="data-row">
+                    <span>Speed</span>
+                    <strong id="speedValue">-</strong>
+                </div>
+
+                <div class="data-row">
+                    <span>Height</span>
+                    <strong id="heightValue">-</strong>
+                </div>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- 하단 상태 -->
+    <section class="message-panel">
+
+        <span>System</span>
+
+        <strong id="systemMessage">
+            Dashboard starting...
+        </strong>
+
+    </section>
+
+</div>
+
+
+<script src="/dashboard-static/dashboard.js"></script>
+
+</body>
+</html>

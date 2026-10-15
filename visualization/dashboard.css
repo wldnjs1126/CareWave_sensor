@@ -1,0 +1,371 @@
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #f5f6f8;
+    color: #20242a;
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+}
+
+.app {
+    max-width: 1400px;
+    margin: auto;
+    padding: 28px;
+}
+
+
+/* 상단 */
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 24px;
+}
+
+.topbar h1 {
+    margin: 0;
+    font-size: 30px;
+}
+
+.topbar p {
+    margin: 5px 0 0;
+    color: #777;
+}
+
+
+.connection {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    font-weight: bold;
+}
+
+.dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+}
+
+.dot.online {
+    background: #21a366;
+}
+
+.dot.offline {
+    background: #d64545;
+}
+
+
+/* 센서 제어 */
+
+.control-panel {
+    background: white;
+
+    padding: 22px;
+
+    border-radius: 14px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 20px;
+}
+
+.control-panel h2 {
+    margin-top: 0;
+}
+
+
+.state-row {
+    display: flex;
+    gap: 15px;
+    margin-top: 8px;
+}
+
+.state-row span {
+    width: 100px;
+    color: #777;
+}
+
+
+.button-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+
+.control-button {
+    border: 0;
+    padding: 13px 22px;
+    border-radius: 8px;
+
+    font-size: 14px;
+    font-weight: bold;
+
+    cursor: pointer;
+}
+
+.control-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.start {
+    background: #20242a;
+    color: white;
+}
+
+.stop {
+    background: #e8eaed;
+    color: #20242a;
+}
+
+.restart {
+    background: #d7d9dd;
+    color: #20242a;
+}
+
+
+/* 메인 */
+
+.main-grid {
+    display: grid;
+
+    grid-template-columns:
+        minmax(0, 2fr)
+        minmax(280px, 1fr);
+
+    gap: 20px;
+}
+
+
+.room-panel,
+.data-panel {
+    background: white;
+    border-radius: 14px;
+    padding: 22px;
+}
+
+
+.panel-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    margin-bottom: 20px;
+}
+
+.panel-title h2 {
+    margin: 0;
+}
+
+.panel-title p {
+    margin: 5px 0 0;
+    color: #888;
+}
+
+
+.live-badge {
+    background: #20242a;
+    color: white;
+
+    font-size: 12px;
+
+    padding: 5px 9px;
+    border-radius: 20px;
+}
+
+
+/* 병실 */
+
+.room {
+    position: relative;
+
+    width: 100%;
+    aspect-ratio: 4 / 5;
+
+    max-height: 650px;
+
+    border: 2px solid #333;
+
+    background:
+        linear-gradient(
+            to right,
+            #fafafa 1px,
+            transparent 1px
+        ),
+        linear-gradient(
+            to bottom,
+            #fafafa 1px,
+            transparent 1px
+        );
+
+    background-size: 10% 10%;
+}
+
+
+.bed {
+    position: absolute;
+
+    left: 15%;
+    top: 32%;
+
+    width: 25%;
+    height: 42%;
+
+    border: 2px solid #777;
+    border-radius: 8px;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    color: #777;
+}
+
+
+.radar {
+    position: absolute;
+
+    left: 50%;
+    top: 3%;
+
+    transform: translateX(-50%);
+
+    background: #20242a;
+    color: white;
+
+    padding: 6px 10px;
+    border-radius: 6px;
+
+    font-size: 12px;
+}
+
+
+.door {
+    position: absolute;
+
+    right: 3%;
+    bottom: 2%;
+
+    color: #777;
+
+    border-bottom: 4px solid #555;
+
+    padding: 5px 20px;
+}
+
+
+.target {
+    position: absolute;
+
+    width: 34px;
+    height: 34px;
+
+    border-radius: 50%;
+
+    background: #20242a;
+    color: white;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-weight: bold;
+
+    transform: translate(
+        -50%,
+        -50%
+    );
+}
+
+
+.hidden {
+    display: none;
+}
+
+
+.waiting-message {
+    position: absolute;
+
+    left: 50%;
+    top: 50%;
+
+    transform:
+        translate(-50%, -50%);
+
+    color: #999;
+
+    text-align: center;
+}
+
+
+/* 데이터 */
+
+.data-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.data-row {
+    display: flex;
+    justify-content: space-between;
+
+    padding: 15px 0;
+
+    border-bottom:
+        1px solid #ececec;
+}
+
+.data-row span {
+    color: #777;
+}
+
+
+/* 하단 메시지 */
+
+.message-panel {
+    margin-top: 20px;
+
+    background: white;
+
+    padding: 16px 22px;
+
+    border-radius: 14px;
+
+    display: flex;
+
+    gap: 20px;
+}
+
+.message-panel span {
+    color: #777;
+}
+
+
+/* 화면 작아질 때 */
+
+@media (
+    max-width: 850px
+) {
+
+    .main-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .control-panel {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+    }
+
+}
