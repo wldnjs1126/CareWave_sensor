@@ -58,6 +58,30 @@ INSERT_SENSOR_RAW = text(
 )
 
 
+LATEST_WINDOW_END = text(
+    """
+    SELECT MAX(window_end)
+    FROM sensor_raw
+    WHERE sensor_id = :sensor_id
+      AND (
+        subject_id = :subject_id
+        OR (subject_id IS NULL AND :subject_id IS NULL)
+      )
+    """
+)
+
+
 def save_sensor_raw(row: dict) -> None:
     with engine.begin() as conn:
         conn.execute(INSERT_SENSOR_RAW, row)
+
+
+def get_latest_window_end(sensor_id, subject_id):
+    with engine.connect() as conn:
+        return conn.execute(
+            LATEST_WINDOW_END,
+            {
+                "sensor_id": sensor_id,
+                "subject_id": subject_id,
+            },
+        ).scalar_one_or_none()
