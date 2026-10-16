@@ -117,6 +117,25 @@ function clamp(value, min, max) {
 }
 
 
+function isInsidePhysicalRoom(position) {
+    if (!position) {
+        return false;
+    }
+
+    const x = Number(position.x);
+    const y = Number(position.y);
+
+    return (
+        Number.isFinite(x) &&
+        Number.isFinite(y) &&
+        x >= ROOM_X_MIN &&
+        x <= ROOM_X_MAX &&
+        y >= ROOM_Y_MIN &&
+        y <= ROOM_Y_MAX
+    );
+}
+
+
 function placeTarget(
     position,
     inferred
@@ -347,6 +366,78 @@ function showLiveData(data) {
 }
 
 
+function showFastLiveData(data) {
+    frameId.textContent =
+        data.frame_id ??
+        frameId.textContent;
+
+    const targets =
+        Array.isArray(data.targets)
+            ? data.targets
+            : [];
+
+    // Only use a fast target for the 2D person marker when it is physically
+    // inside the test room. OUTSIDE/stale tracks are still available to the
+    // 3D point-cloud view but cannot create a fake room target here.
+    const current =
+        targets.find(
+            (item) =>
+                isInsidePhysicalRoom(item)
+        );
+
+    if (!current) {
+        instantDetection.textContent = "NO";
+
+        window.dispatchEvent(
+            new CustomEvent(
+                "carewave:fast-live",
+                { detail: data }
+            )
+        );
+
+        return;
+    }
+
+    instantDetection.textContent = "YES";
+
+    placeTarget(
+        current,
+        false
+    );
+
+    waitingMessage.classList.add(
+        "hidden"
+    );
+
+    targetId.textContent =
+        current.target_id ?? "-";
+
+    xValue.textContent =
+        formatMeters(current.x);
+
+    yValue.textContent =
+        formatMeters(current.y);
+
+    zValue.textContent =
+        formatMeters(current.z);
+
+    speedValue.textContent =
+        current.speed == null
+            ? "-"
+            : `${Number(current.speed).toFixed(2)} m/s`;
+
+    heightValue.textContent =
+        formatMeters(current.height);
+
+    window.dispatchEvent(
+        new CustomEvent(
+            "carewave:fast-live",
+            { detail: data }
+        )
+    );
+}
+
+
 async function loadStatus() {
     try {
         const response =
@@ -525,6 +616,12 @@ function connectLiveWebSocket() {
                     "radar_live"
                 ) {
                     showLiveData(data);
+                }
+                else if (
+                    data.type ===
+                    "radar_fast_live"
+                ) {
+                    showFastLiveData(data);
                 }
 
             } catch (error) {

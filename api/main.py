@@ -16,7 +16,11 @@ from sqlalchemy import text
 
 from aggregation.occupancy_state import occupancy_manager
 from aggregation.sensor_aggregator import aggregator
-from api.schemas import RadarFrameBatchIn, RadarFrameIn
+from api.schemas import (
+    RadarFastLiveIn,
+    RadarFrameBatchIn,
+    RadarFrameIn,
+)
 from api.control import router as control_router
 from api.live import live_manager
 from database.connection import engine
@@ -256,7 +260,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="CareWave Sensor Ingest API",
-    version="1.5.0",
+    version="1.6.0",
     lifespan=lifespan,
 )
 
@@ -374,6 +378,120 @@ async def receive_sensor_frame(
         "frame_id": frame.frame_id,
         "occupancy": occupancy["mode"],
         "presence": occupancy["present"],
+    }
+
+
+@app.post("/api/sensor/live")
+async def receive_sensor_live(
+    live: RadarFastLiveIn,
+):
+    """
+    High-rate visualization endpoint.
+
+    IMPORTANT:
+    - Does NOT write to sensor_raw.
+    - Does NOT update OccupancyManager.
+    - Only forwards the latest target position and TLV 1020 point cloud
+      to dashboard WebSocket clients.
+
+    This keeps DB aggregation at 1 second while the browser can refresh
+    roughly 4-5 times per second.
+    """
+
+    targets = []
+
+    for item in live.targets:
+        if len(item) < 4:
+            continue
+
+        target_id = item[0]
+        x = item[1]
+        y = item[2]
+        z = item[3]
+
+        if target_id is None or x is None or y is None:
+            continue
+
+        speed = (
+            item[4]
+            if len(item) > 4
+            else None
+        )
+
+        height = (
+            item[5]
+            if len(item) > 5
+            else None
+        )
+
+        targets.append({
+            "target_id": int(target_id),
+            "x": float(x),
+            "y": float(y),
+            "z": None if z is None else float(z),
+            "speed": (
+                None
+                if speed is None
+                else float(speed)
+            ),
+            "height": (
+                None
+                if height is None
+                else float(height)
+            ),
+        })
+
+    points = []
+
+    for item in live.points:
+        if len(item) < 3:
+            continue
+
+        # Keep the compact array form over WebSocket:
+        # [x, y, z, doppler, snr]
+        x = float(item[0])
+        y = float(item[1])
+        z = float(item[2])
+        doppler = (
+            float(item[3])
+            if len(item) > 3
+            else 0.0
+        )
+        snr = (
+            float(item[4])
+            if len(item) > 4
+            else 0.0
+        )
+
+        points.append([
+            x,
+            y,
+            z,
+            doppler,
+            snr,
+        ])
+
+    payload = {
+        "type": "radar_fast_live",
+        "frame_id": live.frame_id,
+        "detected": len(targets) > 0,
+        "sensor_presence": bool(live.presence),
+        "target_count": len(targets),
+        "targets": targets,
+        "point_count": len(points),
+        "points": points,
+    }
+
+    await live_manager.broadcast(
+        str(live.sensor_id),
+        payload,
+    )
+
+    return {
+        "status": "accepted",
+        "frame_id": live.frame_id,
+        "target_count": len(targets),
+        "point_count": len(points),
     }
 
 

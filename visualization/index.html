@@ -9,7 +9,7 @@
     <title>CareWave Monitoring</title>
     <link
         rel="stylesheet"
-        href="/dashboard-static/dashboard.css?v=door3"
+        href="/dashboard-static/dashboard.css?v=pointcloud1"
     >
 </head>
 
@@ -181,6 +181,40 @@
         </section>
 
 
+        <section class="cloud-panel">
+
+            <div class="panel-title">
+                <div>
+                    <h2>Real-Time 3D Point Cloud</h2>
+                    <p>TLV 1020 · fast visualization only</p>
+                </div>
+
+                <span
+                    id="cloudStatus"
+                    class="live-badge"
+                >
+                    LOADING
+                </span>
+            </div>
+
+            <div
+                id="pointCloud3d"
+                class="point-cloud-viewport"
+            >
+                <div class="cloud-overlay">
+                    <span>Points <strong id="cloudPointCount">0</strong></span>
+                    <span>Rate <strong id="cloudRate">- Hz</strong></span>
+                    <span>Frame <strong id="cloudFrameId">-</strong></span>
+                </div>
+
+                <div class="cloud-help">
+                    Drag: rotate · Wheel: zoom
+                </div>
+            </div>
+
+        </section>
+
+
         <section class="data-panel">
 
             <div class="panel-title">
@@ -260,7 +294,21 @@
 </div>
 
 
-<script src="/dashboard-static/dashboard.js?v=door3"></script>
+<script type="importmap">
+{
+    "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+    }
+}
+</script>
+
+<script
+    type="module"
+    src="/dashboard-static/dashboard3d.js?v=pointcloud1"
+></script>
+
+<script src="/dashboard-static/dashboard.js?v=pointcloud1"></script>
 
 </body>
 </html>
