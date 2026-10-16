@@ -1,12 +1,38 @@
 const SENSOR_ID = "1";
 
-// Radar coordinate mapping for the current room view.
-// X: -2 m ~ +2 m
-// Y:  0 m ~ 5 m
-const ROOM_X_MIN = -2.0;
-const ROOM_X_MAX = 2.0;
+/*
+Room coordinate system
+
+Physical room:
+- width: 3.6 m
+- depth: 3.8 m
+
+Radar:
+- placed at bottom-center of the room view
+- height: approximately 0.75 m
+- radar origin on floor plan:
+    x = 0
+    y = 0
+
+Radar coordinates:
+- X negative = left
+- X positive = right
+- Y positive = forward toward opposite wall
+
+Room bounds:
+- X = -1.8 ... +1.8 m
+- Y =  0.0 ...  3.8 m
+
+Assumed bed:
+- attached to left wall
+- horizontal orientation
+- size: 1.8 m x 1.0 m
+- top-wall gap: approximately 1.2 m
+*/
+const ROOM_X_MIN = -1.8;
+const ROOM_X_MAX = 1.8;
 const ROOM_Y_MIN = 0.0;
-const ROOM_Y_MAX = 5.0;
+const ROOM_Y_MAX = 3.8;
 
 
 const onlineDot =
@@ -130,9 +156,6 @@ function showTarget(data) {
         return;
     }
 
-    // Current CareWave filtering is calibrated for
-    // the one-person room scenario, so display
-    // the first valid target.
     const current = targets[0];
 
     const x = Number(current.x);
@@ -146,6 +169,11 @@ function showTarget(data) {
         return;
     }
 
+    /*
+    Horizontal mapping:
+    radar x=-1.8 -> left wall
+    radar x=+1.8 -> right wall
+    */
     const leftPercent =
         clamp(
             (
@@ -156,8 +184,16 @@ function showTarget(data) {
             99
         );
 
+    /*
+    Vertical mapping:
+    radar y=0.0 -> bottom
+    radar y=3.8 -> opposite/top wall
+
+    CSS top=0 is top, therefore Y must be inverted.
+    */
     const topPercent =
         clamp(
+            100 -
             (
                 (y - ROOM_Y_MIN) /
                 (ROOM_Y_MAX - ROOM_Y_MIN)

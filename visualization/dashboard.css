@@ -19,13 +19,12 @@ body {
 }
 
 
-/* 상단 */
+/* top */
 
 .topbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-
     margin-bottom: 24px;
 }
 
@@ -39,12 +38,10 @@ body {
     color: #777;
 }
 
-
 .connection {
     display: flex;
     align-items: center;
     gap: 8px;
-
     font-weight: bold;
 }
 
@@ -63,13 +60,11 @@ body {
 }
 
 
-/* 센서 제어 */
+/* controls */
 
 .control-panel {
     background: white;
-
     padding: 22px;
-
     border-radius: 14px;
 
     display: flex;
@@ -83,7 +78,6 @@ body {
     margin-top: 0;
 }
 
-
 .state-row {
     display: flex;
     gap: 15px;
@@ -95,22 +89,18 @@ body {
     color: #777;
 }
 
-
 .button-group {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
 }
 
-
 .control-button {
     border: 0;
     padding: 13px 22px;
     border-radius: 8px;
-
     font-size: 14px;
     font-weight: bold;
-
     cursor: pointer;
 }
 
@@ -135,18 +125,15 @@ body {
 }
 
 
-/* 메인 */
+/* main */
 
 .main-grid {
     display: grid;
-
     grid-template-columns:
         minmax(0, 2fr)
         minmax(280px, 1fr);
-
     gap: 20px;
 }
-
 
 .room-panel,
 .data-panel {
@@ -155,12 +142,10 @@ body {
     padding: 22px;
 }
 
-
 .panel-title {
     display: flex;
     justify-content: space-between;
     align-items: center;
-
     margin-bottom: 20px;
 }
 
@@ -173,103 +158,332 @@ body {
     color: #888;
 }
 
-
 .live-badge {
     background: #20242a;
     color: white;
-
     font-size: 12px;
-
     padding: 5px 9px;
     border-radius: 20px;
 }
 
 
-/* 병실 */
+/* room
+   physical dimensions:
+   width = 3.6 m
+   depth = 3.8 m
+
+   radar origin:
+   x = 0
+   y = 0
+   at bottom center
+*/
 
 .room {
     position: relative;
+    width: min(100%, 720px);
+    margin: 0 auto;
 
-    width: 100%;
-    aspect-ratio: 4 / 5;
+    /* 3.6 m wide / 3.8 m deep */
+    aspect-ratio: 3.6 / 3.8;
 
-    max-height: 650px;
+    overflow: hidden;
 
-    border: 2px solid #333;
-
+    border: 3px solid #34383d;
     background:
         linear-gradient(
             to right,
-            #fafafa 1px,
+            rgba(32, 36, 42, 0.045) 1px,
             transparent 1px
         ),
         linear-gradient(
             to bottom,
-            #fafafa 1px,
+            rgba(32, 36, 42, 0.045) 1px,
             transparent 1px
-        );
+        ),
+        #fcfcfd;
 
-    background-size: 10% 10%;
+    /* approximately 0.2 m grid */
+    background-size:
+        5.56% 5.26%;
 }
 
+
+/* opposite wall screen */
+
+.screen {
+    position: absolute;
+    top: 1.5%;
+    left: 50%;
+    transform: translateX(-50%);
+
+    width: 34%;
+    height: 3.5%;
+
+    border: 2px solid #8d949d;
+    border-radius: 4px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: #707780;
+    background: white;
+
+    font-size: 11px;
+    font-weight: 700;
+}
+
+
+/* bed
+   left wall attached
+   width = 1.8 m -> 50% of 3.6 m
+   depth = 1.0 m -> 26.32% of 3.8 m
+   top wall gap = 1.2 m -> 31.58% of 3.8 m
+*/
 
 .bed {
     position: absolute;
 
-    left: 15%;
-    top: 32%;
+    left: 0;
+    top: 31.58%;
 
-    width: 25%;
-    height: 42%;
+    width: 50%;
+    height: 26.32%;
 
-    border: 2px solid #777;
-    border-radius: 8px;
+    border: 2px solid #777e86;
+    border-left: 0;
+    border-radius: 0 8px 8px 0;
+
+    background:
+        linear-gradient(
+            90deg,
+            #eef0f2 0 28%,
+            #f7f7f8 28% 100%
+        );
 
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
+    justify-content: center;
 
-    color: #777;
+    color: #555d66;
 }
 
+.bed::before {
+    content: "";
+    position: absolute;
+    left: 4%;
+    top: 15%;
+    width: 22%;
+    height: 70%;
+    border: 1px solid #aeb4bb;
+    border-radius: 8px;
+    background: #ffffff;
+}
+
+.bed strong,
+.bed small {
+    position: relative;
+    margin-left: 24%;
+}
+
+.bed small {
+    margin-top: 4px;
+    color: #7d848d;
+}
+
+
+/* right-side temporary partition */
+
+.partition {
+    position: absolute;
+
+    right: 2.5%;
+    top: 24%;
+
+    width: 2%;
+    height: 47%;
+
+    border: 2px solid #8f969e;
+    background: #eceef0;
+}
+
+.partition span {
+    position: absolute;
+
+    left: 50%;
+    top: 50%;
+
+    transform:
+        translate(-50%, -50%)
+        rotate(-90deg);
+
+    white-space: nowrap;
+
+    color: #707780;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+
+/* purifier */
+
+.purifier {
+    position: absolute;
+
+    right: 9%;
+    top: 19%;
+
+    width: 7%;
+    aspect-ratio: 0.75;
+
+    border: 2px solid #7e858d;
+    border-radius: 45% 45% 18% 18%;
+
+    background: #e5e8eb;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: #656d76;
+    font-size: 9px;
+    font-weight: 700;
+}
+
+
+/* assumed door */
+
+.door {
+    position: absolute;
+
+    right: 0;
+    top: 5%;
+
+    width: 17%;
+    height: 3%;
+
+    border-bottom: 4px solid #555c63;
+
+    color: #626a73;
+
+    font-size: 10px;
+    font-weight: 700;
+
+    text-align: center;
+}
+
+
+/* sensor desk at bottom */
+
+.sensor-desk {
+    position: absolute;
+
+    left: 50%;
+    bottom: 0;
+
+    transform: translateX(-50%);
+
+    width: 58%;
+    height: 11%;
+
+    border: 2px solid #999fa6;
+    border-bottom: 0;
+
+    border-radius: 8px 8px 0 0;
+
+    background: #f2f3f4;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    color: #a0a5ab;
+    font-size: 10px;
+    font-weight: 700;
+}
+
+
+/* radar at bottom-center / origin */
 
 .radar {
     position: absolute;
 
     left: 50%;
-    top: 3%;
+    bottom: 10%;
 
     transform: translateX(-50%);
+
+    min-width: 58px;
+    padding: 5px 8px;
+
+    border-radius: 6px;
 
     background: #20242a;
     color: white;
 
-    padding: 6px 10px;
-    border-radius: 6px;
+    text-align: center;
+    font-size: 10px;
 
-    font-size: 12px;
+    z-index: 5;
+}
+
+.radar span,
+.radar small {
+    display: block;
+}
+
+.radar small {
+    margin-top: 2px;
+    opacity: 0.72;
+    font-size: 8px;
 }
 
 
-.door {
+/* room dimensions */
+
+.dimension {
     position: absolute;
 
-    right: 3%;
-    bottom: 2%;
+    padding: 3px 7px;
 
-    color: #777;
+    border-radius: 999px;
 
-    border-bottom: 4px solid #555;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #d7dbe0;
 
-    padding: 5px 20px;
+    color: #777f87;
+
+    font-size: 9px;
+    font-weight: 700;
+
+    pointer-events: none;
 }
 
+.width-dimension {
+    left: 50%;
+    bottom: 1.5%;
+
+    transform: translateX(-50%);
+}
+
+.depth-dimension {
+    top: 50%;
+    left: 51%;
+
+    transform:
+        translate(-50%, -50%)
+        rotate(-90deg);
+}
+
+
+/* live target */
 
 .target {
     position: absolute;
 
-    width: 34px;
-    height: 34px;
+    width: 36px;
+    height: 36px;
 
     border-radius: 50%;
 
@@ -286,19 +500,23 @@ body {
         -50%,
         -50%
     );
-}
 
+    z-index: 10;
+
+    box-shadow:
+        0 0 0 6px
+        rgba(32, 36, 42, 0.08);
+}
 
 .hidden {
     display: none;
 }
 
-
 .waiting-message {
     position: absolute;
 
-    left: 50%;
-    top: 50%;
+    left: 58%;
+    top: 60%;
 
     transform:
         translate(-50%, -50%);
@@ -306,10 +524,12 @@ body {
     color: #999;
 
     text-align: center;
+
+    font-size: 13px;
 }
 
 
-/* 데이터 */
+/* data */
 
 .data-list {
     display: flex;
@@ -331,7 +551,7 @@ body {
 }
 
 
-/* 하단 메시지 */
+/* bottom status */
 
 .message-panel {
     margin-top: 20px;
@@ -343,7 +563,6 @@ body {
     border-radius: 14px;
 
     display: flex;
-
     gap: 20px;
 }
 
@@ -352,7 +571,7 @@ body {
 }
 
 
-/* 화면 작아질 때 */
+/* responsive */
 
 @media (
     max-width: 850px
@@ -367,5 +586,4 @@ body {
         align-items: flex-start;
         gap: 20px;
     }
-
 }
