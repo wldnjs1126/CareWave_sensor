@@ -5,68 +5,78 @@ from datetime import datetime
 
 
 # ============================================================
-# Current CareWave test-room geometry
+# CareWave test-room geometry
 # ============================================================
 #
-# Dashboard / radar coordinates:
-#   Radar origin: bottom-center of room
+# Radar coordinate system:
 #   X: left (-) <---- 0 ----> right (+)
-#   Y: radar (0) -----------> opposite wall (3.8 m)
+#   Y: radar (0) -----------> upper/opposite wall (3.8 m)
 #
 # Room:
-#   width  = 3.6 m  -> X = -1.8 .. +1.8
-#   depth  = 3.8 m  -> Y =  0.0 ..  3.8
+#   width  = 3.6 m
+#   depth  = 3.8 m
 #
 ROOM_X_MIN = -1.8
 ROOM_X_MAX = 1.8
 ROOM_Y_MIN = 0.0
 ROOM_Y_MAX = 3.8
 
-# Assumed bed:
-# - horizontal
-# - attached to left wall
-# - 1.8 m x 1.0 m
-# - upper wall gap about 1.2 m
+
+# ============================================================
+# Bed zone
+# ============================================================
 #
-# Top wall is Y=3.8.
-# Therefore bed Y is approximately 1.6 .. 2.6.
+# Horizontal bed, attached to the left wall.
+#
 BED_X_MIN = -1.8
 BED_X_MAX = 0.0
 BED_Y_MIN = 1.6
 BED_Y_MAX = 2.6
 
-# EXIT / DOOR area for the current test room.
+
+# ============================================================
+# Test-room door / exit zone
+# ============================================================
 #
-# The air purifier is placed against the upper wall and the movable
-# whiteboard is used as a partition on the right side.
-# CareWave treats the passage BETWEEN the purifier and the partition
-# as the test-room door / exit.
+# The test exit is the passage between:
+#   - the air purifier near the upper wall
+#   - the movable whiteboard / partition on the right
 #
-# Radar coordinates:
-#   X: left (-) -> right (+)
-#   Y: radar (0) -> upper/opposite wall (3.8)
-#
-# This rectangular zone is intentionally limited to that passage instead
-# of treating the whole upper-right corner as an exit.
 EXIT_X_MIN = 0.95
 EXIT_X_MAX = 1.65
 EXIT_Y_MIN = 2.90
 EXIT_Y_MAX = 3.70
 
-# CareWave movement event threshold is 0.10 m/s.
-# Use the same value to arm a door-exit candidate.
+# A broader approach area helps preserve an exit transition when the
+# 1-second aggregation jumps from ROOM directly to OUTSIDE.
+EXIT_APPROACH_X_MIN = 0.70
+EXIT_APPROACH_X_MAX = 1.80
+EXIT_APPROACH_Y_MIN = 2.55
+
+# Movement threshold already used by CareWave.
 EXIT_SPEED_MIN = 0.10
 
-# Absence rule after a confirmed moving target reaches the exit zone.
+# After a confirmed exit transition, 10 seconds without returning inside
+# the room is enough to classify absence.
 EXIT_CONFIRM_SECONDS = 10
 
-# If a confirmed person becomes undetectable away from the door, do NOT
-# immediately convert that to absence. This hold is long enough to support
-# the 30-minute INACTIVITY event.
-GENERAL_HOLD_SECONDS = 35 * 60
 
-# If the last confirmed position was the bed and the subject was low-motion,
-# keep room occupancy long enough for sleep monitoring.
+# ============================================================
+# Missing-target holds
+# ============================================================
+#
+# A missing instant target is NOT automatically absence.
+#
+# If the person was moving when the target vanished, only hold briefly.
+# A moving person should normally be reacquired quickly unless they left.
+MOVING_HOLD_SECONDS = 20
+
+# A confirmed low-motion person may disappear from instant radar tracking.
+# Keep occupancy long enough for the 30-minute INACTIVITY rule.
+STATIC_SPEED_MAX = 0.10
+STATIC_HOLD_SECONDS = 35 * 60
+
+# Bed low-motion state must remain long enough for sleep monitoring.
 BED_HOLD_SECONDS = 12 * 60 * 60
 
 
@@ -74,6 +84,8 @@ BED_HOLD_SECONDS = 12 * 60 * 60
 class OccupancyTrack:
     present: bool = False
 
+    # Last TRUSTED position inside ROOM / BED / EXIT.
+    # OUTSIDE detections do not refresh this timestamp.
     last_detection_at: datetime | None = None
 
     last_target_id: int | None = None
@@ -83,16 +95,29 @@ class OccupancyTrack:
     last_speed: float | None = None
     last_zone: str | None = None
 
+    # Exit state.
     exit_armed: bool = False
+    exit_started_at: datetime | None = None
+    outside_since: datetime | None = None
 
 
 class OccupancyManager:
     """
-    Separates:
-      1) instant radar target detection
-      2) room occupancy state
+    Separates three concepts:
 
-    "No target this second" does NOT automatically mean "person left room".
+    1) Instant radar target:
+       A validated target exists in the current sensor update.
+
+    2) Trusted in-room position:
+       A target is physically inside ROOM / BED / EXIT.
+
+    3) Occupancy:
+       CareWave's stateful decision that a person is still in the room.
+
+    Important:
+    - OUTSIDE targets do not automatically create/refresh room occupancy.
+    - A confirmed EXIT -> OUTSIDE transition is preserved until absence.
+    - Stationary target loss is handled by timed occupancy inference.
     """
 
     def __init__(self):
@@ -129,6 +154,19 @@ class OccupancyManager:
 
         return "OUTSIDE"
 
+    @staticmethod
+    def is_exit_approach(
+        x: float | None,
+        y: float | None,
+    ) -> bool:
+        if x is None or y is None:
+            return False
+
+        return (
+            EXIT_APPROACH_X_MIN <= x <= EXIT_APPROACH_X_MAX
+            and y >= EXIT_APPROACH_Y_MIN
+        )
+
     def _get_state(
         self,
         sensor_id,
@@ -143,6 +181,163 @@ class OccupancyManager:
             self._states[key] = OccupancyTrack()
 
         return self._states[key]
+
+    @staticmethod
+    def _clear_exit(
+        state: OccupancyTrack,
+    ) -> None:
+        state.exit_armed = False
+        state.exit_started_at = None
+        state.outside_since = None
+
+    @staticmethod
+    def _arm_exit(
+        state: OccupancyTrack,
+        now: datetime,
+    ) -> None:
+        if not state.exit_armed:
+            state.exit_armed = True
+            state.exit_started_at = now
+
+        state.outside_since = None
+
+    @staticmethod
+    def _set_trusted_target(
+        state: OccupancyTrack,
+        *,
+        now: datetime,
+        target_id: int | None,
+        x: float | None,
+        y: float | None,
+        z: float | None,
+        speed: float | None,
+        zone: str,
+    ) -> None:
+        state.last_detection_at = now
+
+        state.last_target_id = target_id
+        state.last_x = x
+        state.last_y = y
+        state.last_z = z
+        state.last_speed = speed
+        state.last_zone = zone
+
+    def _confirm_exit_absence(
+        self,
+        state: OccupancyTrack,
+        now: datetime,
+    ) -> dict:
+        state.present = False
+
+        # Keep EXIT as the last trusted zone. Do not replace the last trusted
+        # position with a possible OUTSIDE ghost target.
+        state.last_zone = "EXIT"
+
+        self._clear_exit(state)
+
+        return self._snapshot(
+            state,
+            inferred=False,
+            mode="ABSENT_EXIT",
+            now=now,
+        )
+
+    def _handle_no_trusted_target(
+        self,
+        state: OccupancyTrack,
+        now: datetime,
+    ) -> dict:
+        if (
+            not state.present
+            or state.last_detection_at is None
+        ):
+            state.present = False
+
+            return self._snapshot(
+                state,
+                inferred=False,
+                mode="ABSENT",
+                now=now,
+            )
+
+        # ----------------------------------------------------
+        # Exit was already armed.
+        # Missing/OUTSIDE observations must NOT cancel it.
+        # ----------------------------------------------------
+        if state.exit_armed:
+            if state.outside_since is None:
+                state.outside_since = now
+
+            outside_seconds = max(
+                0.0,
+                (
+                    now
+                    - state.outside_since
+                ).total_seconds(),
+            )
+
+            if outside_seconds >= EXIT_CONFIRM_SECONDS:
+                return self._confirm_exit_absence(
+                    state,
+                    now,
+                )
+
+            state.present = True
+
+            return self._snapshot(
+                state,
+                inferred=True,
+                mode="EXIT_PENDING",
+                now=now,
+            )
+
+        seconds_since_detection = max(
+            0.0,
+            (
+                now
+                - state.last_detection_at
+            ).total_seconds(),
+        )
+
+        low_motion = (
+            state.last_speed is None
+            or state.last_speed <= STATIC_SPEED_MAX
+        )
+
+        if (
+            state.last_zone == "BED"
+            and low_motion
+        ):
+            hold_seconds = BED_HOLD_SECONDS
+            mode = "HELD_BED"
+
+        elif low_motion:
+            hold_seconds = STATIC_HOLD_SECONDS
+            mode = "HELD_STATIC"
+
+        else:
+            hold_seconds = MOVING_HOLD_SECONDS
+            mode = "HELD_MOVING"
+
+        if seconds_since_detection <= hold_seconds:
+            state.present = True
+
+            return self._snapshot(
+                state,
+                inferred=True,
+                mode=mode,
+                now=now,
+            )
+
+        state.present = False
+        self._clear_exit(state)
+
+        return self._snapshot(
+            state,
+            inferred=False,
+            mode="ABSENT_TIMEOUT",
+            now=now,
+        )
 
     def update(
         self,
@@ -163,32 +358,38 @@ class OccupancyManager:
         )
 
         # ----------------------------------------------------
-        # A validated radar target exists now.
+        # No instant radar target.
         # ----------------------------------------------------
-        if detected:
-            zone = self.classify_zone(x, y)
+        if not detected:
+            return self._handle_no_trusted_target(
+                state,
+                now,
+            )
 
+        zone = self.classify_zone(
+            x,
+            y,
+        )
+
+        # ----------------------------------------------------
+        # ROOM / BED:
+        # definitely back inside -> cancel exit state.
+        # ----------------------------------------------------
+        if zone in {"ROOM", "BED"}:
             state.present = True
-            state.last_detection_at = now
 
-            state.last_target_id = target_id
-            state.last_x = x
-            state.last_y = y
-            state.last_z = z
-            state.last_speed = speed
-            state.last_zone = zone
+            self._set_trusted_target(
+                state,
+                now=now,
+                target_id=target_id,
+                x=x,
+                y=y,
+                z=z,
+                speed=speed,
+                zone=zone,
+            )
 
-            # Only arm an exit when the subject is actually moving in the
-            # exit/door area. Standing still near the door is not absence.
-            if (
-                zone == "EXIT"
-                and speed is not None
-                and speed >= EXIT_SPEED_MIN
-            ):
-                state.exit_armed = True
-
-            elif zone != "EXIT":
-                state.exit_armed = False
+            self._clear_exit(state)
 
             return self._snapshot(
                 state,
@@ -198,86 +399,125 @@ class OccupancyManager:
             )
 
         # ----------------------------------------------------
-        # No validated radar target exists in this update.
+        # EXIT:
+        # trusted location, but do not call absence yet.
         # ----------------------------------------------------
-        if (
-            not state.present
-            or state.last_detection_at is None
-        ):
-            state.present = False
-
-            return self._snapshot(
-                state,
-                inferred=False,
-                mode="ABSENT",
-                now=now,
-            )
-
-        seconds_since_detection = max(
-            0.0,
-            (
-                now
-                - state.last_detection_at
-            ).total_seconds(),
-        )
-
-        # Person was moving through the exit area and then disappeared.
-        # After 10 seconds with no re-detection, classify as absent.
-        if (
-            state.exit_armed
-            and seconds_since_detection
-            >= EXIT_CONFIRM_SECONDS
-        ):
-            state.present = False
-            state.exit_armed = False
-
-            return self._snapshot(
-                state,
-                inferred=False,
-                mode="ABSENT_EXIT",
-                now=now,
-            )
-
-        bed_hold = (
-            state.last_zone == "BED"
-            and (
-                state.last_speed is None
-                or state.last_speed <= 0.10
-            )
-        )
-
-        hold_seconds = (
-            BED_HOLD_SECONDS
-            if bed_hold
-            else GENERAL_HOLD_SECONDS
-        )
-
-        if seconds_since_detection <= hold_seconds:
+        if zone == "EXIT":
             state.present = True
 
-            if state.exit_armed:
-                mode = "EXIT_PENDING"
-            elif bed_hold:
-                mode = "HELD_BED"
-            else:
-                mode = "HELD_STATIC"
+            self._set_trusted_target(
+                state,
+                now=now,
+                target_id=target_id,
+                x=x,
+                y=y,
+                z=z,
+                speed=speed,
+                zone="EXIT",
+            )
+
+            if (
+                state.exit_armed
+                or (
+                    speed is not None
+                    and speed >= EXIT_SPEED_MIN
+                )
+            ):
+                self._arm_exit(
+                    state,
+                    now,
+                )
+
+                return self._snapshot(
+                    state,
+                    inferred=False,
+                    mode="EXIT_PENDING",
+                    now=now,
+                )
 
             return self._snapshot(
                 state,
-                inferred=True,
-                mode=mode,
+                inferred=False,
+                mode="LIVE",
                 now=now,
             )
 
-        # Safety timeout for cases where no exit evidence was observed.
-        state.present = False
-        state.exit_armed = False
+        # ----------------------------------------------------
+        # OUTSIDE:
+        #
+        # Never let an OUTSIDE target create or refresh room presence.
+        # This prevents objects near/behind the upper wall (for example the
+        # air purifier / stale TI track) from becoming a new resident target.
+        #
+        # If a real exit was already armed, OUTSIDE is evidence supporting
+        # the exit transition and starts/continues the 10-second timer.
+        # ----------------------------------------------------
+        if zone == "OUTSIDE":
+            if state.exit_armed:
+                if state.outside_since is None:
+                    state.outside_since = now
 
-        return self._snapshot(
+                outside_seconds = max(
+                    0.0,
+                    (
+                        now
+                        - state.outside_since
+                    ).total_seconds(),
+                )
+
+                if outside_seconds >= EXIT_CONFIRM_SECONDS:
+                    return self._confirm_exit_absence(
+                        state,
+                        now,
+                    )
+
+                state.present = True
+
+                return self._snapshot(
+                    state,
+                    inferred=True,
+                    mode="EXIT_PENDING",
+                    now=now,
+                )
+
+            # The 1-second average can jump over the narrow EXIT rectangle.
+            # If the last trusted point was already close to the exit and the
+            # new target is OUTSIDE on the same side, arm an exit transition.
+            if (
+                state.present
+                and self.is_exit_approach(
+                    state.last_x,
+                    state.last_y,
+                )
+                and (
+                    state.last_speed is None
+                    or state.last_speed >= EXIT_SPEED_MIN
+                )
+            ):
+                self._arm_exit(
+                    state,
+                    now,
+                )
+                state.outside_since = now
+
+                return self._snapshot(
+                    state,
+                    inferred=True,
+                    mode="EXIT_PENDING",
+                    now=now,
+                )
+
+            # Otherwise ignore the OUTSIDE target completely and process it
+            # exactly like a missing/untrusted target.
+            return self._handle_no_trusted_target(
+                state,
+                now,
+            )
+
+        # Missing coordinates / unknown classification.
+        return self._handle_no_trusted_target(
             state,
-            inferred=False,
-            mode="ABSENT_TIMEOUT",
-            now=now,
+            now,
         )
 
     @staticmethod
