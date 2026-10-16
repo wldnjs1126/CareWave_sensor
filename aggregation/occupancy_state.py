@@ -35,11 +35,23 @@ BED_X_MAX = 0.0
 BED_Y_MIN = 1.6
 BED_Y_MAX = 2.6
 
-# Assumed exit/door area is the upper-right part of the room.
-# This is intentionally broader than the visual door itself so an exiting
-# person can be recognized before the track disappears.
-EXIT_X_MIN = 1.15
-EXIT_Y_MIN = 2.70
+# EXIT / DOOR area for the current test room.
+#
+# The air purifier is placed against the upper wall and the movable
+# whiteboard is used as a partition on the right side.
+# CareWave treats the passage BETWEEN the purifier and the partition
+# as the test-room door / exit.
+#
+# Radar coordinates:
+#   X: left (-) -> right (+)
+#   Y: radar (0) -> upper/opposite wall (3.8)
+#
+# This rectangular zone is intentionally limited to that passage instead
+# of treating the whole upper-right corner as an exit.
+EXIT_X_MIN = 0.95
+EXIT_X_MAX = 1.65
+EXIT_Y_MIN = 2.90
+EXIT_Y_MAX = 3.70
 
 # CareWave movement event threshold is 0.10 m/s.
 # Use the same value to arm a door-exit candidate.
@@ -104,8 +116,8 @@ class OccupancyManager:
             return "BED"
 
         if (
-            x >= EXIT_X_MIN
-            and y >= EXIT_Y_MIN
+            EXIT_X_MIN <= x <= EXIT_X_MAX
+            and EXIT_Y_MIN <= y <= EXIT_Y_MAX
         ):
             return "EXIT"
 

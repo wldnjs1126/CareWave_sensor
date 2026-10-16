@@ -293,19 +293,29 @@ body {
 }
 
 
-/* right-side temporary partition */
-
+/* movable whiteboard / partition
+   The board stands on the right side and starts below the door passage.
+*/
 .partition {
     position: absolute;
 
     right: 2.5%;
     top: 24%;
 
-    width: 2%;
-    height: 47%;
+    width: 3.2%;
+    height: 49%;
 
-    border: 2px solid #8f969e;
-    background: #eceef0;
+    border: 2px solid #777f87;
+    border-radius: 3px;
+
+    background:
+        linear-gradient(
+            to right,
+            #f5f6f7,
+            #e7e9eb
+        );
+
+    z-index: 3;
 }
 
 .partition span {
@@ -320,59 +330,77 @@ body {
 
     white-space: nowrap;
 
-    color: #707780;
-    font-size: 10px;
+    color: #626a73;
+    font-size: 9px;
     font-weight: 700;
 }
 
-
-/* purifier */
-
+/* air purifier
+   Against the upper wall, just to the left of the door passage.
+*/
 .purifier {
     position: absolute;
 
-    right: 9%;
-    top: 19%;
+    right: 22%;
+    top: 5%;
 
-    width: 7%;
-    aspect-ratio: 0.75;
+    width: 8%;
+    aspect-ratio: 0.78;
 
-    border: 2px solid #7e858d;
-    border-radius: 45% 45% 18% 18%;
+    border: 2px solid #737b84;
+    border-radius: 45% 45% 20% 20%;
 
-    background: #e5e8eb;
+    background:
+        linear-gradient(
+            to bottom,
+            #dfe3e6,
+            #cfd4d8
+        );
 
     display: flex;
     align-items: center;
     justify-content: center;
 
-    color: #656d76;
+    color: #555d66;
     font-size: 9px;
     font-weight: 700;
+
+    z-index: 4;
 }
 
-
-/* assumed door */
-
+/* test-room DOOR / EXIT
+   This is NOT the physical building door.
+   For the experiment, the passage between the air purifier and the
+   movable whiteboard is treated as the room exit.
+*/
 .door {
     position: absolute;
 
-    right: 0;
-    top: 5%;
+    right: 4.5%;
+    top: 8%;
 
-    width: 17%;
-    height: 3%;
+    width: 16%;
+    height: 13%;
 
-    border-bottom: 4px solid #555c63;
+    border: 2px dashed #606872;
+    border-radius: 8px;
 
-    color: #626a73;
+    background:
+        rgba(32, 36, 42, 0.035);
+
+    color: #555d66;
 
     font-size: 10px;
     font-weight: 700;
 
-    text-align: center;
-}
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
+    text-align: center;
+
+    z-index: 2;
+}
 
 /* sensor desk at bottom */
 
