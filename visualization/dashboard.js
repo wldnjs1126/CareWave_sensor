@@ -8,26 +8,12 @@ Physical room:
 - depth: 3.8 m
 
 Radar:
-- placed at bottom-center of the room view
+- bottom-center
 - height: approximately 0.75 m
-- radar origin on floor plan:
-    x = 0
-    y = 0
-
-Radar coordinates:
-- X negative = left
-- X positive = right
-- Y positive = forward toward opposite wall
 
 Room bounds:
 - X = -1.8 ... +1.8 m
 - Y =  0.0 ...  3.8 m
-
-Assumed bed:
-- attached to left wall
-- horizontal orientation
-- size: 1.8 m x 1.0 m
-- top-wall gap: approximately 1.2 m
 */
 const ROOM_X_MIN = -1.8;
 const ROOM_X_MAX = 1.8;
@@ -70,6 +56,15 @@ const waitingMessage =
 
 const presence =
     document.getElementById("presence");
+
+const instantDetection =
+    document.getElementById("instantDetection");
+
+const occupancyState =
+    document.getElementById("occupancyState");
+
+const zoneValue =
+    document.getElementById("zoneValue");
 
 const targetId =
     document.getElementById("targetId");
@@ -122,58 +117,20 @@ function clamp(value, min, max) {
 }
 
 
-function hideTarget() {
-    target.classList.add("hidden");
-
-    waitingMessage.classList.remove(
-        "hidden"
-    );
-
-    waitingMessage.textContent =
-        "감지된 Target 없음";
-
-    presence.textContent = "NO";
-    targetId.textContent = "-";
-    xValue.textContent = "-";
-    yValue.textContent = "-";
-    zValue.textContent = "-";
-    speedValue.textContent = "-";
-    heightValue.textContent = "-";
-}
-
-
-function showTarget(data) {
-    const targets =
-        Array.isArray(data.targets)
-            ? data.targets
-            : [];
-
-    if (
-        !data.presence ||
-        targets.length === 0
-    ) {
-        hideTarget();
-        return;
-    }
-
-    const current = targets[0];
-
-    const x = Number(current.x);
-    const y = Number(current.y);
+function placeTarget(
+    position,
+    inferred
+) {
+    const x = Number(position.x);
+    const y = Number(position.y);
 
     if (
         !Number.isFinite(x) ||
         !Number.isFinite(y)
     ) {
-        hideTarget();
-        return;
+        return false;
     }
 
-    /*
-    Horizontal mapping:
-    radar x=-1.8 -> left wall
-    radar x=+1.8 -> right wall
-    */
     const leftPercent =
         clamp(
             (
@@ -184,13 +141,7 @@ function showTarget(data) {
             99
         );
 
-    /*
-    Vertical mapping:
-    radar y=0.0 -> bottom
-    radar y=3.8 -> opposite/top wall
-
-    CSS top=0 is top, therefore Y must be inverted.
-    */
+    // Radar Y grows toward the top wall.
     const topPercent =
         clamp(
             100 -
@@ -209,38 +160,190 @@ function showTarget(data) {
         `${topPercent}%`;
 
     target.textContent =
-        current.target_id ?? "1";
+        inferred
+            ? "~"
+            : (
+                position.target_id ??
+                "1"
+            );
 
-    target.classList.remove("hidden");
+    target.className =
+        inferred
+            ? "target inferred"
+            : "target";
 
-    waitingMessage.classList.add(
+    return true;
+}
+
+
+function showAbsent(data) {
+    target.classList.add("hidden");
+
+    waitingMessage.classList.remove(
         "hidden"
     );
 
-    presence.textContent = "YES";
+    waitingMessage.textContent =
+        "부재 / Target 없음";
 
-    targetId.textContent =
-        current.target_id ?? "-";
+    presence.textContent = "NO";
+    instantDetection.textContent = "NO";
 
-    xValue.textContent =
-        formatMeters(current.x);
+    occupancyState.textContent =
+        data.occupancy_state ?? "ABSENT";
 
-    yValue.textContent =
-        formatMeters(current.y);
+    zoneValue.textContent =
+        data.zone ?? "-";
 
-    zValue.textContent =
-        formatMeters(current.z);
+    targetId.textContent = "-";
+    xValue.textContent = "-";
+    yValue.textContent = "-";
+    zValue.textContent = "-";
+    speedValue.textContent = "-";
+    heightValue.textContent = "-";
+}
 
-    speedValue.textContent =
-        current.speed == null
-            ? "-"
-            : `${Number(current.speed).toFixed(2)} m/s`;
 
-    heightValue.textContent =
-        formatMeters(current.height);
+function showLiveData(data) {
+    const targets =
+        Array.isArray(data.targets)
+            ? data.targets
+            : [];
+
+    const detected =
+        Boolean(data.detected) &&
+        targets.length > 0;
+
+    const occupied =
+        Boolean(data.presence);
+
+    presence.textContent =
+        occupied ? "YES" : "NO";
+
+    instantDetection.textContent =
+        detected ? "YES" : "NO";
+
+    occupancyState.textContent =
+        data.occupancy_state ?? "-";
+
+    zoneValue.textContent =
+        data.zone ?? "-";
 
     frameId.textContent =
-        data.frame_id ?? frameId.textContent;
+        data.frame_id ??
+        frameId.textContent;
+
+
+    // --------------------------------------------------------
+    // 1. Live radar target exists now
+    // --------------------------------------------------------
+    if (detected) {
+        const current = targets[0];
+
+        const placed =
+            placeTarget(
+                current,
+                false
+            );
+
+        if (!placed) {
+            showAbsent(data);
+            return;
+        }
+
+        waitingMessage.classList.add(
+            "hidden"
+        );
+
+        targetId.textContent =
+            current.target_id ?? "-";
+
+        xValue.textContent =
+            formatMeters(current.x);
+
+        yValue.textContent =
+            formatMeters(current.y);
+
+        zValue.textContent =
+            formatMeters(current.z);
+
+        speedValue.textContent =
+            current.speed == null
+                ? "-"
+                : (
+                    `${Number(
+                        current.speed
+                    ).toFixed(2)} m/s`
+                );
+
+        heightValue.textContent =
+            formatMeters(
+                current.height
+            );
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // 2. No instant target, but CareWave still knows the
+    //    subject has not left the room.
+    // --------------------------------------------------------
+    if (occupied) {
+        const last =
+            data.last_known_position;
+
+        if (
+            last &&
+            placeTarget(
+                last,
+                true
+            )
+        ) {
+            waitingMessage.classList.add(
+                "hidden"
+            );
+
+            targetId.textContent =
+                last.target_id ?? "-";
+
+            xValue.textContent =
+                formatMeters(last.x);
+
+            yValue.textContent =
+                formatMeters(last.y);
+
+            zValue.textContent =
+                formatMeters(last.z);
+
+            // Do not invent a measured zero speed.
+            speedValue.textContent =
+                "미검출 · 정지 추정";
+
+            heightValue.textContent =
+                "-";
+
+        } else {
+            target.classList.add(
+                "hidden"
+            );
+
+            waitingMessage.classList.remove(
+                "hidden"
+            );
+
+            waitingMessage.textContent =
+                "재실 추정 · 위치 갱신 대기";
+        }
+
+        return;
+    }
+
+
+    // --------------------------------------------------------
+    // 3. Absence
+    // --------------------------------------------------------
+    showAbsent(data);
 }
 
 
@@ -421,7 +524,7 @@ function connectLiveWebSocket() {
                     data.type ===
                     "radar_live"
                 ) {
-                    showTarget(data);
+                    showLiveData(data);
                 }
 
             } catch (error) {
@@ -436,7 +539,9 @@ function connectLiveWebSocket() {
     socket.addEventListener(
         "close",
         () => {
-            target.classList.add("hidden");
+            target.classList.add(
+                "hidden"
+            );
 
             waitingMessage.classList.remove(
                 "hidden"

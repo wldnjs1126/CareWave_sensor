@@ -9,7 +9,7 @@
     <title>CareWave Monitoring</title>
     <link
         rel="stylesheet"
-        href="/dashboard-static/dashboard.css"
+        href="/dashboard-static/dashboard.css?v=presence2"
     >
 </head>
 
@@ -199,6 +199,21 @@
                 </div>
 
                 <div class="data-row">
+                    <span>Instant Target</span>
+                    <strong id="instantDetection">-</strong>
+                </div>
+
+                <div class="data-row">
+                    <span>Occupancy State</span>
+                    <strong id="occupancyState">-</strong>
+                </div>
+
+                <div class="data-row">
+                    <span>Zone</span>
+                    <strong id="zoneValue">-</strong>
+                </div>
+
+                <div class="data-row">
                     <span>Target ID</span>
                     <strong id="targetId">-</strong>
                 </div>
@@ -245,7 +260,7 @@
 </div>
 
 
-<script src="/dashboard-static/dashboard.js"></script>
+<script src="/dashboard-static/dashboard.js?v=presence2"></script>
 
 </body>
 </html>

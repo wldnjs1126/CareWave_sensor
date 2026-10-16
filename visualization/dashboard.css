@@ -587,3 +587,23 @@ body {
         gap: 20px;
     }
 }
+
+
+/* ------------------------------------------------------------
+   Presence inference visualization
+   ------------------------------------------------------------ */
+
+.target.inferred {
+    background: rgba(255, 255, 255, 0.92);
+    color: #555d66;
+
+    border: 3px dashed #737b84;
+
+    box-shadow:
+        0 0 0 7px
+        rgba(75, 82, 90, 0.08);
+}
+
+.data-row strong.inferred-value {
+    color: #6d747c;
+}
