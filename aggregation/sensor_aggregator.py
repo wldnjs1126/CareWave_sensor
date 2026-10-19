@@ -171,7 +171,16 @@ class SensorAggregator:
             )
 
             if frame_sequence_continuous:
-                start = state["next_start"]
+                drift_seconds = (
+                    candidate_start - state["next_start"]
+            ).total_seconds()
+
+                if drift_seconds > 3:
+                # 서버 수신 시각과의 차이가 너무 커지면
+                # 현재 수신 시각을 기준으로 다시 정렬
+                    start = candidate_start
+                else:
+                    start = state["next_start"]
 
             else:
                 latest_end = await asyncio.to_thread(
