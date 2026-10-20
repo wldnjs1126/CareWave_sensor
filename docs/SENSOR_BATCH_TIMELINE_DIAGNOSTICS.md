@@ -54,3 +54,15 @@ unknown speed as a measured zero.
 - Next check: compare the reason, drift_seconds, frame_gap_count, previous_last_frame_id, and assigned_start values for both gaps.
 - Never synthesize four missing seconds or write zero velocity. Never simply disable rebasing without measuring accumulated timestamp drift.
 - Separately, add a bounded ESP32 offline queue/retry; retain real sample acquisition time to avoid relabeling old records as current.
+
+## Experimental firmware A/B: v5.0.6 frame-paced diagnostic
+
+An Arduino diagnostic firmware ZIP has been prepared as a separate user artifact (not deployed). The original v5.0.5 sketch is retained.
+
+- Based on radar configuration frameCfg 55.00ms, build batches from a cumulative frame clock: add 55ms for each parsed frame; send when total reaches 1000ms; keep the modulo-1000 remainder.
+- This yields roughly 18 or 19 radar frames per 1-second batch instead of v5.0.5 millis()-triggered 20-frame (~1.10 second) batches.
+- Simulated with 1,800 continuous frames: 99 complete nominal second-bins (81 batches of 18, 18 batches of 19), 0 nominal accumulated remainder.
+- During Wi-Fi outage batches are **still dropped**; HTTP still blocks UART and no backlog guarantee is provided. Firmware is a controlled A/B prototype only, not a production fix.
+- Running test: copy working private carewave_secrets.h settings, upload diagnostic sketch in Arduino IDE and collect 2–3 minutes of HTTP 200 and DIAG_BATCH logs. Verify 18/19 frames/batch and continuous frame numbers.
+- Compare SQL sensor_raw.window_start with created_at over matching test interval. If 4-second gaps remain, collect server CAREWAVE_BATCH_TIMELINE entries and implement true frame-acquisition-time 1-second server aggregation rather than artificial continuity.
+- Do not alter life_event or synthesize missing sensor data while testing.
