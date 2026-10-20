@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
 import math
+import os
+import time
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -15,6 +19,9 @@ from database.sensor_raw_repository import (
 KST = ZoneInfo("Asia/Seoul")
 WINDOW_SECONDS = 1
 BATCH_CONTINUITY_TOLERANCE_SECONDS = 3
+# Diagnostics only: never changes the aggregation or timestamps.
+BATCH_TIMELINE_DEBUG = os.getenv("CAREWAVE_BATCH_TIMELINE_DEBUG", "0") == "1"
+logger = logging.getLogger(__name__)
 
 
 def _now_kst_naive() -> datetime:
@@ -162,6 +169,24 @@ class SensorAggregator:
 
         async with self._lock:
             state = self._batch_state.get(key)
+            previous_last_frame_id = (
+                state.get("last_frame_id") if state is not None else None
+            )
+            previous_received_at = (
+                state.get("last_received_at") if state is not None else None
+            )
+            previous_next_start = (
+                state.get("next_start") if state is not None else None
+            )
+            drift_seconds = (
+                (candidate_start - previous_next_start).total_seconds()
+                if previous_next_start is not None else None
+            )
+            receive_interval_seconds = (
+                (received_at - previous_received_at).total_seconds()
+                if previous_received_at is not None else None
+            )
+            allocation_reason = "INITIAL_BATCH"
 
             frame_sequence_continuous = (
                 state is not None
@@ -176,13 +201,18 @@ class SensorAggregator:
             ).total_seconds()
 
                 if drift_seconds > 3:
-                # 서버 수신 시각과의 차이가 너무 커지면
-                # 현재 수신 시각을 기준으로 다시 정렬
+                    # Existing clock realignment is preserved for diagnosis.
+                    allocation_reason = "FRAME_CONTINUOUS_BUT_DRIFT_REBASE"
                     start = candidate_start
                 else:
+                    allocation_reason = "FRAME_CONTINUOUS"
                     start = state["next_start"]
 
             else:
+                if previous_last_frame_id is None or first_frame_id is None:
+                    allocation_reason = "FRAME_SEQUENCE_UNAVAILABLE"
+                else:
+                    allocation_reason = "FRAME_SEQUENCE_DISCONTINUOUS"
                 latest_end = await asyncio.to_thread(
                     get_latest_window_end,
                     sensor_id,
@@ -199,16 +229,21 @@ class SensorAggregator:
 
                     if time_difference <= BATCH_CONTINUITY_TOLERANCE_SECONDS:
                         start = latest_end
+                        allocation_reason += "_DB_WINDOW_CONTINUITY"
                     else:
                         start = candidate_start
+                        allocation_reason += "_DB_TIME_REBASE"
                 else:
                     start = candidate_start
+                    allocation_reason += "_NO_DB_PREVIOUS"
 
             end = start + timedelta(seconds=WINDOW_SECONDS)
 
             self._batch_state[key] = {
                 "next_start": end,
                 "last_frame_id": last_frame_id,
+                # Only used for diagnostics; not aggregation decisions.
+                "last_received_at": received_at,
             }
 
         row = self._aggregate(
@@ -218,10 +253,48 @@ class SensorAggregator:
             end,
         )
 
+        db_write_start = time.perf_counter()
         await asyncio.to_thread(
             save_sensor_raw,
             row,
         )
+        db_write_ms = round(
+            (time.perf_counter() - db_write_start) * 1000.0, 1
+        )
+
+        if BATCH_TIMELINE_DEBUG:
+            # Read these alongside ESP32 HTTP response/frame counters.
+            # No raw position or personal movement coordinates are logged.
+            diagnostic = {
+                "sensor_id": sensor_id,
+                "subject_id": subject_id,
+                "reason": allocation_reason,
+                "received_at": received_at.isoformat(sep=" "),
+                "receive_interval_seconds": receive_interval_seconds,
+                "first_frame_id": first_frame_id,
+                "last_frame_id": last_frame_id,
+                "previous_last_frame_id": previous_last_frame_id,
+                "frame_gap_count": (
+                    max(0, first_frame_id - previous_last_frame_id - 1)
+                    if first_frame_id is not None
+                    and previous_last_frame_id is not None else None
+                ),
+                "observation_count": len(samples),
+                "sample_count": row["sample_count"],
+                "candidate_start": candidate_start.isoformat(sep=" "),
+                "previous_next_start": (
+                    previous_next_start.isoformat(sep=" ")
+                    if previous_next_start is not None else None
+                ),
+                "drift_seconds": drift_seconds,
+                "assigned_start": start.isoformat(sep=" "),
+                "assigned_end": end.isoformat(sep=" "),
+                "db_write_ms": db_write_ms,
+            }
+            logger.warning(
+                "CAREWAVE_BATCH_TIMELINE %s",
+                json.dumps(diagnostic, ensure_ascii=False),
+            )
 
         return {
             "window_start": start,
