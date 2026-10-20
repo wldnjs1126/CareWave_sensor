@@ -20,6 +20,65 @@ const ROOM_X_MAX = 1.8;
 const ROOM_Y_MIN = 0.0;
 const ROOM_Y_MAX = 3.8;
 
+// Display-only filtering. Raw sensor values, DB data and fall detection are
+// NEVER changed by this logic.
+const DISPLAY_EMA_ALPHA = 0.60;
+const DISPLAY_ASSOCIATION_RADIUS_M = 1.5;
+const DISPLAY_TRACK_TTL_MS = 3000;
+const DISPLAY_MAX_STEP_MPS = 2.0;
+
+let displayTrack = null; // {x, y, targetId, measuredAt}
+let lastFastLiveAt = 0;
+
+function resetDisplayTrack() {
+    displayTrack = null;
+}
+
+function validCoordinate(value) {
+    return value !== null &&
+        value !== undefined &&
+        value !== "" &&
+        Number.isFinite(Number(value));
+}
+
+function select2DTarget(targets) {
+    const valid = targets.filter(isInsidePhysicalRoom);
+    if (!valid.length) return null;
+
+    const now = Date.now();
+    if (
+        !displayTrack ||
+        now - displayTrack.measuredAt > DISPLAY_TRACK_TTL_MS
+    ) {
+        return valid[0];
+    }
+
+    // Do not jump to the first arbitrary radar track when it changes order.
+    const sameId = valid.find(
+        item =>
+            item.target_id != null &&
+            displayTrack.targetId != null &&
+            String(item.target_id) === String(displayTrack.targetId)
+    );
+    if (sameId) return sameId;
+
+    // Reassociate within a plausible distance when TI changes the TID.
+    let nearest = null;
+    let nearestDistance = Infinity;
+    for (const item of valid) {
+        const distance = Math.hypot(
+            Number(item.x) - displayTrack.x,
+            Number(item.y) - displayTrack.y,
+        );
+        if (distance < nearestDistance) {
+            nearestDistance = distance;
+            nearest = item;
+        }
+    }
+    return nearestDistance <= DISPLAY_ASSOCIATION_RADIUS_M
+        ? nearest : null;
+}
+
 
 const onlineDot =
     document.getElementById("onlineDot");
@@ -122,6 +181,9 @@ function isInsidePhysicalRoom(position) {
         return false;
     }
 
+    if (!validCoordinate(position.x) || !validCoordinate(position.y)) {
+        return false;
+    }
     const x = Number(position.x);
     const y = Number(position.y);
 
@@ -136,66 +198,68 @@ function isInsidePhysicalRoom(position) {
 }
 
 
-function placeTarget(
-    position,
-    inferred
-) {
-    const x = Number(position.x);
-    const y = Number(position.y);
+function placeTarget(position, inferred) {
+    if (!isInsidePhysicalRoom(position)) return false;
 
-    if (
-        !Number.isFinite(x) ||
-        !Number.isFinite(y)
-    ) {
-        return false;
+    const now = Date.now();
+    const measuredX = Number(position.x);
+    const measuredY = Number(position.y);
+    let x = measuredX;
+    let y = measuredY;
+
+    if (displayTrack) {
+        if (inferred) {
+            // Inference means no current measured position. Keep the last
+            // plotted position without claiming a fresh measurement.
+            x = displayTrack.x;
+            y = displayTrack.y;
+        } else {
+            const elapsedMs = now - displayTrack.measuredAt;
+            if (elapsedMs >= 0 && elapsedMs < DISPLAY_TRACK_TTL_MS) {
+                const deltaX = measuredX - displayTrack.x;
+                const deltaY = measuredY - displayTrack.y;
+                const distance = Math.hypot(deltaX, deltaY);
+                // Only the visual marker is capped, not the raw measurements.
+                const maxStep = DISPLAY_MAX_STEP_MPS *
+                    Math.max(elapsedMs / 1000, 0.25);
+                const portion = distance > 0
+                    ? Math.min(1, maxStep / distance) : 1;
+                x = displayTrack.x +
+                    deltaX * portion * DISPLAY_EMA_ALPHA;
+                y = displayTrack.y +
+                    deltaY * portion * DISPLAY_EMA_ALPHA;
+            }
+        }
     }
 
-    const leftPercent =
-        clamp(
-            (
-                (x - ROOM_X_MIN) /
-                (ROOM_X_MAX - ROOM_X_MIN)
-            ) * 100,
-            1,
-            99
-        );
+    displayTrack = {
+        x, y,
+        targetId: inferred
+            ? (displayTrack?.targetId ?? position.target_id ?? null)
+            : (position.target_id ?? null),
+        measuredAt: inferred
+            ? (displayTrack?.measuredAt ?? 0)
+            : now,
+    };
 
-    // Radar Y grows toward the top wall.
-    const topPercent =
-        clamp(
-            100 -
-            (
-                (y - ROOM_Y_MIN) /
-                (ROOM_Y_MAX - ROOM_Y_MIN)
-            ) * 100,
-            1,
-            99
-        );
+    const leftPercent = clamp(
+        ((x - ROOM_X_MIN) / (ROOM_X_MAX - ROOM_X_MIN)) * 100,
+        1, 99
+    );
+    const topPercent = clamp(
+        100 - ((y - ROOM_Y_MIN) / (ROOM_Y_MAX - ROOM_Y_MIN)) * 100,
+        1, 99
+    );
 
-    target.style.left =
-        `${leftPercent}%`;
-
-    target.style.top =
-        `${topPercent}%`;
-
-    target.textContent =
-        inferred
-            ? "~"
-            : (
-                position.target_id ??
-                "1"
-            );
-
-    target.className =
-        inferred
-            ? "target inferred"
-            : "target";
-
+    target.style.left = `${leftPercent}%`;
+    target.style.top = `${topPercent}%`;
+    target.textContent = inferred ? "~" : (position.target_id ?? "1");
+    target.className = inferred ? "target inferred" : "target";
     return true;
 }
 
-
 function showAbsent(data) {
+    resetDisplayTrack();
     target.classList.add("hidden");
 
     waitingMessage.classList.remove(
@@ -233,6 +297,7 @@ function showLiveData(data) {
         Boolean(data.detected) &&
         targets.length > 0;
 
+    const current = detected ? select2DTarget(targets) : null;
     const occupied =
         Boolean(data.presence);
 
@@ -240,7 +305,7 @@ function showLiveData(data) {
         occupied ? "YES" : "NO";
 
     instantDetection.textContent =
-        detected ? "YES" : "NO";
+        current ? "YES" : "NO";
 
     occupancyState.textContent =
         data.occupancy_state ?? "-";
@@ -256,9 +321,12 @@ function showLiveData(data) {
     // --------------------------------------------------------
     // 1. Live radar target exists now
     // --------------------------------------------------------
-    if (detected) {
-        const current = targets[0];
-
+    // The fast stream wins for 2D while it is fresh. A slow batch
+    // arriving later must not drag the marker back to an old position.
+    if (current && Date.now() - lastFastLiveAt < 1500) {
+        return;
+    }
+    if (current) {
         const placed =
             placeTarget(
                 current,
@@ -266,7 +334,7 @@ function showLiveData(data) {
             );
 
         if (!placed) {
-            showAbsent(data);
+            // A rejected position is not proof that the room is empty.
             return;
         }
 
@@ -379,11 +447,8 @@ function showFastLiveData(data) {
     // Only use a fast target for the 2D person marker when it is physically
     // inside the test room. OUTSIDE/stale tracks are still available to the
     // 3D point-cloud view but cannot create a fake room target here.
-    const current =
-        targets.find(
-            (item) =>
-                isInsidePhysicalRoom(item)
-        );
+    lastFastLiveAt = Date.now();
+    const current = select2DTarget(targets);
 
     if (!current) {
         instantDetection.textContent = "NO";
@@ -471,6 +536,13 @@ async function loadStatus() {
         radarState.textContent =
             data.state ?? "UNKNOWN";
 
+        if (!data.online || data.state === "STOPPED" ||
+            data.state === "ERROR") {
+            resetDisplayTrack();
+            lastFastLiveAt = 0;
+            target.classList.add("hidden");
+        }
+
         if (data.frame_id != null) {
             frameId.textContent =
                 data.frame_id;
@@ -507,6 +579,9 @@ async function loadStatus() {
 
         radarState.textContent =
             "UNKNOWN";
+        resetDisplayTrack();
+        lastFastLiveAt = 0;
+        target.classList.add("hidden");
 
         setMessage(
             "API connection failed"
