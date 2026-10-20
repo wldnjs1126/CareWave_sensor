@@ -66,3 +66,15 @@ An Arduino diagnostic firmware ZIP has been prepared as a separate user artifact
 - Running test: copy working private carewave_secrets.h settings, upload diagnostic sketch in Arduino IDE and collect 2–3 minutes of HTTP 200 and DIAG_BATCH logs. Verify 18/19 frames/batch and continuous frame numbers.
 - Compare SQL sensor_raw.window_start with created_at over matching test interval. If 4-second gaps remain, collect server CAREWAVE_BATCH_TIMELINE entries and implement true frame-acquisition-time 1-second server aggregation rather than artificial continuity.
 - Do not alter life_event or synthesize missing sensor data while testing.
+
+## v5.0.6 frame-paced test: October 20, 2026, 17:55:53–17:58:17 KST
+
+- User's 144 ESP32 DIAG_BATCH records contain 143 HTTP 200 and one HTTP -11 (59th batch, frames 1056 through 1073).
+- 18-frame batches: 117; 19-frame batches: 27. First-to-last radar frame IDs 1 through 2619 have no discontinuities; frame_gaps_total remains 0.
+- Median HTTP processing time is 62ms; average batch-build elapsed around 919ms; max UART backlog 1376 bytes.
+- For the 143 successful HTTP acknowledgements, **there were NO four-second jumps**. A one-second interval (17:56:51 to 17:56:52) lies between successful ACK window labels, corresponding to the batch whose HTTP response failed.
+- IMPORTANT: HTTP -11 only means the ESP32 failed to obtain a valid response (often HTTPClient read timeout). It DOES NOT prove the server failed to COMMIT the missing batch. Inspect actual sensor_raw at 17:56:51 with a read-only query before treating it as missing.
+- Do not retry blindly yet: server currently has no durable batch idempotency key / UNIQUE constraint on sensor/sensor-run/frame-range. After response timeout, retrying may insert a duplicate DB window.
+- To distinguish actual DB loss from an acknowledgement timeout, run on CareWave_AI branch: python -m scripts.diagnose_sensor_timeline --subject-id 1 --sensor-id 1 --since "2026-10-20 17:55:50" --until "2026-10-20 17:58:20"
+- Next permanent transport improvement: retry with bounded queue and a server-generated idempotent insert keyed to sensor identity + acquisition session + batch frame range. Ensure the radar restarts and resets frame_id between sessions without collisions.
+- Avoid treating a missing ACK as confirmed packet loss and avoid synthesizing missing sensor frames.
