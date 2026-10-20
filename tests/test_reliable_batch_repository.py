@@ -111,7 +111,6 @@ class BatchIdempotencyTests(unittest.TestCase):
 
     def test_failure_rolls_back_receipt_and_sensor_row(self):
         row = self.sample()
-        row["non_existing_column"] = 1  # SQL ignores additional bind values
         # Make sensor_raw INSERT fail with a real constraint instead.
         with self.engine.begin() as conn:
             conn.execute(text(
@@ -128,6 +127,20 @@ class BatchIdempotencyTests(unittest.TestCase):
             self.assertEqual(
                 conn.execute(text("SELECT COUNT(*) FROM sensor_raw")).scalar_one(),
                 0,
+            )
+        # An orphaned receipt would prevent an authentic retry; confirm
+        # that a fixed DB can accept this *same* batch_id after rollback.
+        with self.engine.begin() as conn:
+            conn.execute(text("DROP TRIGGER stop_sensor_raw"))
+        inserted, _ = save_batch_once(
+            self.engine, row, batch_id="boot_nonce_000002",
+            payload_sha256="b" * 64, first_frame_id=19, last_frame_id=36,
+        )
+        self.assertTrue(inserted)
+        with self.engine.connect() as conn:
+            self.assertEqual(
+                conn.execute(text("SELECT COUNT(*) FROM sensor_raw")).scalar_one(),
+                1,
             )
 
 if __name__ == "__main__":
