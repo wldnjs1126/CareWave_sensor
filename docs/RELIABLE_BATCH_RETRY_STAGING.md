@@ -51,3 +51,20 @@ server clone for integration, but DO NOT put credentials into GitHub.
 - Add explicit queue saturation monitoring, restart-safe persistence, and a separate network transmit task.
 - Once the capture-time and transport semantics are correct, retest 3D live and remote control together.
 - Do NOT invent missing zero-speed windows for inactivity or fall detection.
+
+## SQLite unit-test fix (2026-10-20)
+
+The first local Windows run produced 1 PASS / 2 FAIL. An explicit
+SAVEPOINT (begin_nested) let a receipt survive a later sensor_raw insert
+failure on SQLite, invalidating rollback tests. This is a real test-safety bug.
+The server now uses a single outer db_engine.begin() transaction with no
+SAVEPOINT; on IntegrityError the whole transaction is rolled back before a
+new lookup of the committed receipt. Driver-dependent receipt datetime values
+are also normalized. The rollback test was strengthened to retry the same ID
+after repairing the injected failure.
+
+The isolated local simulation of SQLite full transaction, duplicate retry,
+rollback, and conflicting payload passed. However the complete three-test
+suite still needs to be run by the user on the updated branch; a production
+MySQL InnoDB integration test remains pending. **Do not apply this migration
+or flash the v5.0.7 firmware to the production sensor until these pass.**
