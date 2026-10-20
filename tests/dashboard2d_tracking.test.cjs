@@ -75,7 +75,10 @@ test("missing/null and OUTSIDE positions cannot become ROOM marker", () => {
     vm.runInContext("isInsidePhysicalRoom({x:4,y:2})", context), false,
   );
   call("showLiveData", radar([t(11, 0, 2)]));
-  call("showLiveData", radar([t(20, 4, 2)], true, true));
+  call("showLiveData", {
+    ...radar([t(20, 4, 2)], true, true),
+    last_known_position: t(11, 0, 2),
+  });
   assert.equal(elements.presence.textContent, "YES");
   assert.equal(elements.target.textContent, "~");
 });
