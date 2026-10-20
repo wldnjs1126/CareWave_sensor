@@ -14,6 +14,10 @@ from database.sensor_raw_repository import (
     get_latest_window_end,
     save_sensor_raw,
 )
+from database.connection import engine
+from database.reliable_batch_repository import (
+    _assert_same, find_receipt, save_batch_once,
+)
 
 
 KST = ZoneInfo("Asia/Seoul")
@@ -122,6 +126,9 @@ class SensorAggregator:
         self,
         frames: list[dict],
         received_at: datetime | None = None,
+        *,
+        batch_id: str | None = None,
+        payload_sha256: str | None = None,
     ) -> dict:
         """
         Treat one ESP32 batch as one physical ~1 second sensor_raw window.
@@ -167,7 +174,24 @@ class SensorAggregator:
             received_at - timedelta(seconds=WINDOW_SECONDS)
         )
 
+        if batch_id is not None and not payload_sha256:
+            raise ValueError("payload_sha256 required with batch_id")
+
+        precomputed_row = None
+        write_elapsed_ms = 0.0
         async with self._lock:
+            if batch_id is not None:
+                cached = await asyncio.to_thread(find_receipt, engine, batch_id)
+                if cached is not None:
+                    _assert_same(cached, payload_sha256, sensor_id, subject_id)
+                    return {
+                        "window_start": cached["window_start"],
+                        "window_end": cached["window_end"],
+                        "sample_count": cached["sample_count"],
+                        "first_frame_id": cached["first_frame_id"],
+                        "last_frame_id": cached["last_frame_id"],
+                        "duplicate": True,
+                    }
             state = self._batch_state.get(key)
             previous_last_frame_id = (
                 state.get("last_frame_id") if state is not None else None
@@ -239,6 +263,32 @@ class SensorAggregator:
 
             end = start + timedelta(seconds=WINDOW_SECONDS)
 
+            if batch_id is not None:
+                # Persist the receipt and sensor_raw atomically before advancing
+                # the in-memory cursor. Unique batch_id prevents duplicate rows
+                # after an HTTP response is lost and the client retries.
+                precomputed_row = self._aggregate(key, samples, start, end)
+                db_write_start = time.perf_counter()
+                inserted, stored = await asyncio.to_thread(
+                    save_batch_once, engine, precomputed_row,
+                    batch_id=batch_id,
+                    payload_sha256=payload_sha256,
+                    first_frame_id=first_frame_id,
+                    last_frame_id=last_frame_id,
+                )
+                write_elapsed_ms = (
+                    time.perf_counter() - db_write_start
+                ) * 1000.0
+                if not inserted:
+                    return {
+                        "window_start": stored["window_start"],
+                        "window_end": stored["window_end"],
+                        "sample_count": stored["sample_count"],
+                        "first_frame_id": stored["first_frame_id"],
+                        "last_frame_id": stored["last_frame_id"],
+                        "duplicate": True,
+                    }
+
             self._batch_state[key] = {
                 "next_start": end,
                 "last_frame_id": last_frame_id,
@@ -246,21 +296,17 @@ class SensorAggregator:
                 "last_received_at": received_at,
             }
 
-        row = self._aggregate(
-            key,
-            samples,
-            start,
-            end,
+        row = precomputed_row or self._aggregate(
+            key, samples, start, end,
         )
 
-        db_write_start = time.perf_counter()
-        await asyncio.to_thread(
-            save_sensor_raw,
-            row,
-        )
-        db_write_ms = round(
-            (time.perf_counter() - db_write_start) * 1000.0, 1
-        )
+        if batch_id is None:
+            db_write_start = time.perf_counter()
+            await asyncio.to_thread(save_sensor_raw, row)
+            write_elapsed_ms = (
+                time.perf_counter() - db_write_start
+            ) * 1000.0
+        db_write_ms = round(write_elapsed_ms, 1)
 
         if BATCH_TIMELINE_DEBUG:
             # Read these alongside ESP32 HTTP response/frame counters.
@@ -302,6 +348,7 @@ class SensorAggregator:
             "sample_count": row["sample_count"],
             "first_frame_id": first_frame_id,
             "last_frame_id": last_frame_id,
+            "duplicate": False,
         }
 
     async def flush_expired(self) -> int:
