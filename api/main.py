@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -7,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 from fastapi import (
     FastAPI,
+    HTTPException,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -24,6 +27,7 @@ from api.schemas import (
 from api.control import router as control_router
 from api.live import live_manager
 from database.connection import engine
+from database.reliable_batch_repository import _assert_same, find_receipt
 
 
 KST = ZoneInfo("Asia/Seoul")
@@ -507,6 +511,41 @@ async def receive_sensor_batch(
 
     first = batch.frames[0]
 
+    # The hash covers the original wire payload, BEFORE occupancy inference
+    # or received-at timestamps. Retried copies must be byte-equivalent in
+    # their modelled fields, regardless of server receipt time.
+    payload_sha256 = None
+    if batch.batch_id is not None:
+        canonical = json.dumps(
+            [frame.model_dump(mode="json") for frame in batch.frames],
+            sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        )
+        payload_sha256 = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        # Short-circuit an already committed duplicate before any occupancy
+        # state updates, broadcast or sensor_raw insert.
+        cached = await asyncio.to_thread(
+            find_receipt, engine, batch.batch_id,
+        )
+        if cached is not None:
+            try:
+                _assert_same(
+                    cached, payload_sha256, first.sensor_id, first.subject_id,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            return {
+                "status": "accepted", "duplicate": True,
+                "batch_id": batch.batch_id,
+                "observation_count": len(batch.frames),
+                "frame_count": cached["sample_count"],
+                "sensor_id": first.sensor_id,
+                "subject_id": first.subject_id,
+                "first_frame_id": cached["first_frame_id"],
+                "last_frame_id": cached["last_frame_id"],
+                "window_start": cached["window_start"],
+                "window_end": cached["window_end"],
+            }
+
     occupancy = _update_occupancy(
         sensor_id=first.sensor_id,
         subject_id=first.subject_id,
@@ -537,17 +576,22 @@ async def receive_sensor_batch(
 
         payloads.append(payload)
 
-    result = await aggregator.add_batch(
-        payloads,
-        received_at=received_at,
-    )
+    try:
+        result = await aggregator.add_batch(
+            payloads,
+            received_at=received_at,
+            batch_id=batch.batch_id,
+            payload_sha256=payload_sha256,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     live_payload = _build_live_payload(
         batch.frames,
         occupancy,
     )
 
-    if live_payload is not None:
+    if live_payload is not None and not result.get("duplicate", False):
         await live_manager.broadcast(
             str(first.sensor_id),
             live_payload,
@@ -555,6 +599,8 @@ async def receive_sensor_batch(
 
     return {
         "status": "accepted",
+        "batch_id": batch.batch_id,
+        "duplicate": result.get("duplicate", False),
         "observation_count": len(
             batch.frames
         ),
