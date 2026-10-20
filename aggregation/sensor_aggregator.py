@@ -247,11 +247,19 @@ class SensorAggregator:
                 # if it is close to the current batch time. On a long outage,
                 # realign to current time instead of inventing many seconds.
                 if latest_end is not None:
-                    time_difference = abs(
-                        (candidate_start - latest_end).total_seconds()
-                    )
-
-                    if time_difference <= BATCH_CONTINUITY_TOLERANCE_SECONDS:
+                    # A radar STOP/START resets frame_id to 1. If a backlog
+                    # made the previous DB window run ahead of the current
+                    # receive-time candidate, NEVER allocate a row earlier
+                    # than what is already committed for this sensor.
+                    # This preserves DB chronology, but cannot restore lost
+                    # real-world acquisition time during a UART backlog.
+                    difference_seconds = (
+                        candidate_start - latest_end
+                    ).total_seconds()
+                    if difference_seconds < 0:
+                        start = latest_end
+                        allocation_reason += "_DB_MONOTONIC_FLOOR"
+                    elif difference_seconds <= BATCH_CONTINUITY_TOLERANCE_SECONDS:
                         start = latest_end
                         allocation_reason += "_DB_WINDOW_CONTINUITY"
                     else:
