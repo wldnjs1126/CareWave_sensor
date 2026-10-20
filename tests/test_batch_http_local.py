@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import os
 import unittest
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from unittest.mock import AsyncMock, patch
 
 # Override even pre-existing .env values for THIS TEST PROCESS to ensure the
@@ -163,6 +165,54 @@ class LocalBatchHTTPTests(unittest.TestCase):
             main_module.live_manager.broadcast.await_count, 1,
             "a duplicate must not broadcast a fresh live radar update",
         )
+
+
+    def test_frame_counter_reset_does_not_move_db_window_backward(self):
+        """A radar STOP/START can reset frame_id=1 while DB is ahead."""
+        async def do_requests():
+            transport = httpx.ASGITransport(app=main_module.app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://local-test",
+            ) as client:
+                old_payload = self.payload()
+                old_payload["frames"] = [
+                    {**frame, "frame_id": frame["frame_id"] + 5800}
+                    for frame in old_payload["frames"]
+                ]
+                first = await client.post(
+                    "/api/sensor/batch", json=old_payload,
+                )
+
+                # A previous UART backlog may have allocated the latest DB
+                # window ahead of the current server receive timestamp.
+                future_end = (
+                    datetime.now(ZoneInfo("Asia/Seoul"))
+                    .replace(tzinfo=None)
+                    + timedelta(seconds=9)
+                ).replace(microsecond=0)
+
+                reboot_payload = self.payload()
+                reboot_payload["batch_id"] = (
+                    "local_http_test_boot0001_batch0002"
+                )
+                with patch.object(
+                    agg_module, "get_latest_window_end",
+                    return_value=future_end,
+                ):
+                    second = await client.post(
+                        "/api/sensor/batch", json=reboot_payload,
+                    )
+                return first, second, future_end
+
+        first, second, future_end = asyncio.run(do_requests())
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertGreaterEqual(
+            datetime.fromisoformat(second.json()["window_start"]),
+            future_end,
+            "the reset radar frame_id must not move a DB window backwards",
+        )
+        self.assertEqual(self.counts(), (2, 2))
 
 
 if __name__ == "__main__":
