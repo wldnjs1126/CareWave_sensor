@@ -143,6 +143,34 @@ const speedValue =
 const heightValue =
     document.getElementById("heightValue");
 
+const movementState =
+    document.getElementById("movementState");
+
+// Current speed observation, for UI display ONLY.
+// The 3-second MOVEMENT life-event condition belongs to the event engine.
+const MOVEMENT_DISPLAY_SPEED_MIN = 0.10;
+
+function showMovementObservation(speed, kind = "measured") {
+    if (!movementState) return;
+    if (kind === "absent") {
+        movementState.textContent = "부재";
+        return;
+    }
+    if (kind === "inferred") {
+        movementState.textContent = "미검출 · 재실 추정";
+        return;
+    }
+    if (speed === null || speed === undefined ||
+        speed === "" || !Number.isFinite(Number(speed)) ||
+        Number(speed) < 0) {
+        movementState.textContent = "속도 측정 대기";
+        return;
+    }
+    movementState.textContent = Number(speed) >= MOVEMENT_DISPLAY_SPEED_MIN
+        ? "움직임 관측"
+        : "저속 관측";
+}
+
 
 function setMessage(message) {
     systemMessage.textContent = message;
@@ -260,6 +288,7 @@ function placeTarget(position, inferred) {
 
 function showAbsent(data) {
     resetDisplayTrack();
+    showMovementObservation(null, "absent");
     target.classList.add("hidden");
 
     waitingMessage.classList.remove(
@@ -368,6 +397,7 @@ function showLiveData(data) {
                 current.height
             );
 
+        showMovementObservation(current.speed);
         return;
     }
 
@@ -377,6 +407,7 @@ function showLiveData(data) {
     //    subject has not left the room.
     // --------------------------------------------------------
     if (occupied) {
+        showMovementObservation(null, "inferred");
         const last =
             data.last_known_position;
 
@@ -493,6 +524,7 @@ function showFastLiveData(data) {
 
     heightValue.textContent =
         formatMeters(current.height);
+    showMovementObservation(current.speed);
 
     window.dispatchEvent(
         new CustomEvent(
@@ -538,6 +570,10 @@ async function loadStatus() {
 
         if (!data.online || data.state === "STOPPED" ||
             data.state === "ERROR") {
+            if (movementState) {
+                movementState.textContent =
+                    data.online ? "센서 정지" : "수신 없음";
+            }
             resetDisplayTrack();
             lastFastLiveAt = 0;
             target.classList.add("hidden");
@@ -579,6 +615,7 @@ async function loadStatus() {
 
         radarState.textContent =
             "UNKNOWN";
+        if (movementState) movementState.textContent = "연결 오류";
         resetDisplayTrack();
         lastFastLiveAt = 0;
         target.classList.add("hidden");
