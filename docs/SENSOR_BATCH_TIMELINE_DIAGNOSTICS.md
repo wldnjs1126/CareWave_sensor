@@ -41,3 +41,16 @@ Second issue: presence=1 with missing X/Y/Z can mean maintained occupancy,
 not verified stillness. Display may carry prior coordinates with an explicit
 stale/estimated flag; movement, fall and inactivity detectors must NOT treat
 unknown speed as a measured zero.
+
+## v5.0.5 firmware retest: 2026-10-20
+
+- Early Wi-Fi outage: 21 batches dropped before HTTP, 20 frames/observations each. This is genuine untransmitted data.
+- After recovery: 85 consecutive HTTP 200 responses, radar frame IDs 421 through 2146 continuous (1,726 frames), no reported frame gaps.
+- Median HTTP response 66 ms, mean 83.5 ms. Mean ESP32 batch build elapsed 1,030 ms.
+- Timestamp gap #1: server window_end 17:20:01 then next window_start 17:20:05; radar frame IDs 993 -> 994 continuous.
+- Timestamp gap #2: server window_end 17:20:40 then next window_start 17:20:44; radar frame IDs 1702 -> 1703 continuous.
+- These demonstrate 4-second DB window label holes despite continuous radar frames successfully delivered by HTTP.
+- Backend assignment REASON is not yet proven: obtain the opt-in server CAREWAVE_BATCH_TIMELINE log before changing the production window assignment.
+- Next check: compare the reason, drift_seconds, frame_gap_count, previous_last_frame_id, and assigned_start values for both gaps.
+- Never synthesize four missing seconds or write zero velocity. Never simply disable rebasing without measuring accumulated timestamp drift.
+- Separately, add a bounded ESP32 offline queue/retry; retain real sample acquisition time to avoid relabeling old records as current.
