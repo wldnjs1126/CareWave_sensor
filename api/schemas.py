@@ -40,6 +40,9 @@ class RadarFrameIn(BaseModel):
 
 
 class RadarFrameBatchIn(BaseModel):
+    # Optional retry identity. Old ESP32 firmware continues without it.
+    # New firmware generates a fresh boot nonce + increasing batch number.
+    batch_id: str | None = Field(default=None, min_length=8, max_length=96, pattern=r"^[A-Za-z0-9_-]+$")
     # Around 18-20 frames/sec can contain several TIDs per frame,
     # so the batch limit must be larger than the frame count itself.
     frames: list[RadarFrameIn] = Field(min_length=1, max_length=256)
