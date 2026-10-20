@@ -111,3 +111,34 @@ test("real absence removes 2D measurement, without changing DB", () => {
   assert.equal(elements.presence.textContent, "NO");
   assert.equal(elements.targetId.textContent, "-");
 });
+
+
+test("speed readout changes with measured low and moving samples", () => {
+  const { elements, call } = fixture();
+  call("showLiveData", radar([{...t(11, 0, 2), speed: 0.02}]));
+  assert.equal(elements.movementState.textContent, "저속 관측");
+  call("showLiveData", radar([{...t(11, 0.2, 2), speed: 0.18}]));
+  assert.equal(elements.movementState.textContent, "움직임 관측");
+  // Preserve the original back-end occupancy state unchanged.
+  assert.equal(elements.occupancyState.textContent, "LIVE");
+});
+
+test("a missing target never fabricates measured stillness", () => {
+  const { elements, call } = fixture();
+  call("showLiveData", radar([{...t(11, 0, 2), speed: 0.15}]));
+  call("showLiveData", {
+    ...radar([], false, true),
+    occupancy_state: "HELD_STATIC",
+    last_known_position: t(11, 0, 2),
+  });
+  assert.equal(elements.movementState.textContent, "미검출 · 재실 추정");
+});
+
+test("fast visualization sample updates the live movement readout", () => {
+  const { elements, call } = fixture();
+  call("showFastLiveData", {
+    frame_id: 13, targets: [{...t(11, 0.2, 2), speed: 0.14}],
+    points: [],
+  });
+  assert.equal(elements.movementState.textContent, "움직임 관측");
+});
