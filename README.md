@@ -1,94 +1,20 @@
-# CareWave Sensor Ingest
+# CareWave 대시보드 공유용 파일
 
-IWR6843AOPEVM + XIAO ESP32-C6에서 전송한 레이더 프레임을 FastAPI가 수신하고, 프레임 원본은 DB에 저장하지 않은 채 1초 단위로 메모리에서 집계하여 Naver Cloud Platform MySQL의 `sensor_raw` 테이블에 저장하는 프로젝트입니다.
+이 브랜치는 `CareWave_sensor`의 대시보드 화면 구현 파일만 분리한 공유 패키지입니다. 운영용 `main` 브랜치에는 영향을 주지 않습니다.
 
-## 데이터 흐름
+## 포함된 파일
+- `visualization/index.html` — 대시보드 화면 구조
+- `visualization/dashboard.css` — 레이아웃과 스타일
+- `visualization/dashboard.js` — 센서 상태 조회, 제어 버튼, 실시간 데이터 수신
+- `visualization/dashboard3d.js` — Three.js 기반 3D 레이더 화면
 
-```text
-IWR6843AOPEVM
-  -> XIAO ESP32-C6 (UART/TLV parsing)
-  -> Wi-Fi HTTP POST /api/sensor/frame
-  -> FastAPI memory buffer (1 second)
-  -> sensor_raw aggregation
-  -> NCP MySQL
-```
+## 실행 환경
+이 파일들은 단독 HTML 파일로 더블클릭하여 완전히 동작하는 형태가 아니라, 기존 FastAPI 서버에 연결되는 **프런트엔드 구성 요소**입니다.
 
-`radar_frame` 테이블은 사용하지 않습니다.
+원본 서버는 `/dashboard`에 `index.html`을 제공하고 `/dashboard-static/`에 정적 파일을 연결합니다.
+대시보드는 `/api/sensor/{sensor_id}/status`, `/api/sensor/{sensor_id}/command`, `/ws/sensor/{sensor_id}` 엔드포인트를 사용합니다.
+3D 시각화는 Three.js 외부 모듈(CDN)을 로드합니다.
 
-## sensor_raw 기준
+실제 화면을 사용하려면 원본 CareWave_sensor 서버의 `visualization` 폴더에 동일한 구조로 넣고, 기존 FastAPI 서버를 실행한 후 `/dashboard` 주소로 접속해야 합니다. 백엔드 API와 WebSocket을 다른 서버에서 제공한다면 별도의 연결 설정 또는 프록시가 필요합니다.
 
-현재 서버는 아래 집계값을 저장합니다.
-
-- `sample_count`
-- `presence`
-- `avg_x`, `avg_y`, `avg_z`, `min_z`
-- `avg_velocity_x`, `avg_velocity_y`, `avg_velocity_z`, `min_velocity_z`
-- `avg_speed`, `max_speed`
-- `avg_acceleration_z`, `min_acceleration_z`
-- `avg_height`, `min_height`
-- `avg_movement_level`
-- `zone`
-- `window_start`, `window_end`, `created_at`
-
-## 설치
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-`.env.example`을 복사해 `.env`를 만들고 실제 NCP MySQL 접속 정보를 입력합니다.
-
-```bash
-copy .env.example .env
-```
-
-서버 실행:
-
-```bash
-uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-상태 확인:
-
-```text
-GET /health
-```
-
-프레임 수신:
-
-```text
-POST /api/sensor/frame
-```
-
-예시 요청:
-
-```json
-{
-  "sensor_id": 1,
-  "subject_id": 1,
-  "frame_id": 353,
-  "target_id": 1,
-  "x": -0.105,
-  "y": 3.280,
-  "z": 0.075,
-  "velocity_x": 0.034,
-  "velocity_y": -0.069,
-  "velocity_z": -0.008,
-  "acceleration_z": 0.004,
-  "speed": 0.078,
-  "height": 0.138,
-  "presence": true,
-  "zone": "ROOM"
-}
-```
-
-`speed`가 없으면 서버가 `velocity_x/y/z`로 계산합니다. `movement_level`이 없으면 `speed`를 사용합니다. `zone`이 없으면 DB에 `NULL`로 저장합니다.
-
-## 주의
-
-- `.env`는 GitHub에 올리지 않습니다.
-- ESP32에는 DB 계정/비밀번호를 넣지 않습니다.
-- ESP32는 FastAPI 주소만 알고 있으면 됩니다.
-- 프레임 원본은 메모리에서 1초간만 보관되며, 집계 후 제거됩니다.
+원본 저장소: https://github.com/wldnjs1126/CareWave_sensor
