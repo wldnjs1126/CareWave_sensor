@@ -1,3 +1,4 @@
+# ceiling-pilot-20261110-v1
 import asyncio
 
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from aggregation.occupancy_state import occupancy_manager
+from room_pose import frame_to_room, fast_live_to_room
 from aggregation.sensor_aggregator import aggregator
 from api.schemas import (
     RadarFastLiveIn,
@@ -336,6 +338,8 @@ async def receive_sensor_frame(
         .replace(tzinfo=None)
     )
 
+    frame = frame_to_room(frame)
+
     occupancy = _update_occupancy(
         sensor_id=frame.sensor_id,
         subject_id=frame.subject_id,
@@ -397,6 +401,8 @@ async def receive_sensor_live(
     This keeps DB aggregation at 1 second while the browser can refresh
     roughly 4-5 times per second.
     """
+
+    live = fast_live_to_room(live)
 
     targets = []
 
@@ -505,6 +511,7 @@ async def receive_sensor_batch(
         .replace(tzinfo=None)
     )
 
+    batch = batch.model_copy(update={"frames": [frame_to_room(f) for f in batch.frames]})
     first = batch.frames[0]
 
     occupancy = _update_occupancy(

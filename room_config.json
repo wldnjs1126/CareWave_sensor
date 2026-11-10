@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "site": "CareWave 2026-11 ceiling-center pilot room",
+    "coordinate_definition": "X: left(-) to right(+); Y: bottom bathroom wall(-) to wardrobe wall(+); Z: floor(0) to ceiling(+)",
+    "warning": "The raw_to_room_rotation is an INSTALLATION ASSUMPTION. Verify by walking three known points before live measurements."
+  },
+  "room": {
+    "width_x_m": 2.9,
+    "length_y_m": 4.3,
+    "ceiling_height_m": 2.3
+  },
+  "bed": {
+    "width_along_x_m": 2.0,
+    "length_along_y_m": 1.5,
+    "height_m": 0.55,
+    "gap_from_left_wall_m": 0.9,
+    "gap_from_top_wall_m": 0.3
+  },
+  "entrance": {
+    "wall": "left",
+    "starts_at_bottom_corner": true,
+    "opening_length_m": 1.65,
+    "inside_zone_depth_m": 0.25,
+    "approach_extra_depth_m": 0.3,
+    "approach_extra_length_m": 0.2
+  },
+  "bathroom": {
+    "wall": "bottom",
+    "distance_from_left_wall_m": 0.4,
+    "opening_width_m": 0.5,
+    "inside_zone_depth_m": 0.4
+  },
+  "sensor": {
+    "ceiling_center": true,
+    "position_room_xyz_m": [0.0, 0.0, 2.3],
+    "raw_to_room_rotation": [[1, 0, 0], [0, 0, 1], [0, -1, 0]],
+    "rotation_is_calibrated": false,
+    "note": "START-ONLY: assumes raw X -> room X, raw Z -> room Y, raw -Y -> room Z. Different sensor mounting orientations require a measured rotation matrix."
+  }
+}

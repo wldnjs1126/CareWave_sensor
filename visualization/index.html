@@ -11,6 +11,8 @@
         rel="stylesheet"
         href="/dashboard-static/dashboard.css?v=pointcloud1"
     >
+<!-- Ceiling-center room geometry + styling -->
+<link rel="stylesheet" href="/dashboard-static/room_layout.css?v=ceiling20261110">
 </head>
 
 <body>
@@ -101,8 +103,8 @@
                 <div>
                     <h2>Real-Time Room View</h2>
                     <p>
-                        3.6 m × 3.8 m test room ·
-                        radar height 0.75 m
+                        2.90 m × 4.30 m 실증 방 ·
+                        천장 중앙 센서 H 2.30 m
                     </p>
                 </div>
 
@@ -114,52 +116,13 @@
 
 
             <div class="room">
-
-                <!-- opposite wall / screen -->
-                <div class="screen">
-                    SCREEN
-                </div>
-
-                <!-- assumed bed: attached to left wall -->
-                <div class="bed">
-                    <strong>BED</strong>
-                    <small>1.8 × 1.0 m</small>
-                </div>
-
-                <!-- movable whiteboard used as a partition -->
-                <div class="partition">
-                    <span>WHITEBOARD / PARTITION</span>
-                </div>
-
-                <!-- air purifier placed against the upper wall -->
-                <div class="purifier">
-                    AIR
-                </div>
-
-                <!-- test-room exit: passage between purifier and whiteboard -->
-                <div class="door">
-                    DOOR / EXIT
-                </div>
-
-                <!-- desk holding radar -->
-                <div class="sensor-desk">
-                    SENSOR DESK
-                </div>
-
-                <!-- radar origin -->
-                <div class="radar">
-                    <span>RADAR</span>
-                    <small>H 0.75 m</small>
-                </div>
-
-                <!-- dimension labels -->
-                <div class="dimension width-dimension">
-                    3.6 m
-                </div>
-
-                <div class="dimension depth-dimension">
-                    3.8 m
-                </div>
+                <div class="wardrobe-label">붙박이장 방향 / 벽</div>
+                <div class="bed"><strong>BED</strong><small>2.00 × 1.50 m · H 0.55 m</small></div>
+                <div class="entrance-door"><span>출입문 1.65m</span></div>
+                <div class="bathroom-door"><span>화장실 0.50m</span></div>
+                <div class="radar"><span>RADAR</span><small>천장 2.30m</small></div>
+                <div class="dimension width-dimension">2.90 m</div>
+                <div class="dimension depth-dimension">4.30 m</div>
 
                 <!-- live target -->
                 <div
@@ -303,12 +266,13 @@
 }
 </script>
 
+<script src="/dashboard-static/room_config.js?v=ceiling20261110"></script>
+
 <script
     type="module"
-    src="/dashboard-static/dashboard3d.js?v=pointcloud1"
+    src="/dashboard-static/dashboard3d.js?v=ceiling20261110"
 ></script>
-
-<script src="/dashboard-static/dashboard.js?v=pointcloud1"></script>
+<script src="/dashboard-static/dashboard.js?v=ceiling20261110"></script>
 
 </body>
 </html>

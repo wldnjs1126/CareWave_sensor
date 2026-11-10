@@ -1,3 +1,4 @@
+// ceiling-pilot-20261110-v1
 const SENSOR_ID = "1";
 
 /*
@@ -15,10 +16,12 @@ Room bounds:
 - X = -1.8 ... +1.8 m
 - Y =  0.0 ...  3.8 m
 */
-const ROOM_X_MIN = -1.8;
-const ROOM_X_MAX = 1.8;
-const ROOM_Y_MIN = 0.0;
-const ROOM_Y_MAX = 3.8;
+const G = window.CAREWAVE_ROOM;
+if (!G) throw new Error("room_config.js must load before dashboard.js");
+const ROOM_X_MIN = G.room.xmin;
+const ROOM_X_MAX = G.room.xmax;
+const ROOM_Y_MIN = G.room.ymin;
+const ROOM_Y_MAX = G.room.ymax;
 
 
 const onlineDot =

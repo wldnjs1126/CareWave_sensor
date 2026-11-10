@@ -1,0 +1,22 @@
+/* ceiling-pilot-20261110-v1 */
+/* CareWave pilot 2026-11: perfect rectangle, no recess or bathroom corner */
+.room { aspect-ratio: 2.9 / 4.3; background-size: 6.8966% 4.6512%; }
+.room .screen, .room .partition, .room .purifier, .room .door, .room .sensor-desk { display:none; }
+.room .bed {
+  left: 31.0345%;
+  top: 6.9767%;
+  width: 68.9655%;
+  height: 34.8837%;
+  border: 2px solid #6683a5;
+  border-radius: 7px;
+  color: #263b5c;
+}
+.room .bed::before { display:none; }
+.room .bed strong, .room .bed small { margin-left: 0; text-align:center; }
+.room .radar { left:50%; top:50%; bottom:auto; transform:translate(-50%,-50%); z-index:5; background:#cf6b22; }
+.room .wardrobe-label { position:absolute; z-index:3; left:50%; top:1%; transform:translateX(-50%); background:#e5e7eb; color:#404a55; font-size:11px; padding:3px 7px; border-radius:5px; white-space:nowrap; }
+.room .entrance-door { position:absolute; left:0; bottom:0; width:5px; height:38.3721%; z-index:3; background:#2463c6; }
+.room .entrance-door span { position:absolute; left:8px; top:50%; transform:translateY(-50%); white-space:nowrap; background:#eaf2ff; color:#144c8d; padding:3px 5px; font-size:10px; border-radius:3px; }
+.room .bathroom-door { position:absolute; left:13.7931%; bottom:0; width:17.2414%; height:6px; z-index:4; background:#099b9f; }
+.room .bathroom-door span { position:absolute; left:0; bottom:8px; white-space:nowrap; background:#d9f6f3; color:#036d74; padding:3px 5px; font-size:10px; border-radius:3px; }
+.room .dimension { z-index:5; pointer-events:none; }

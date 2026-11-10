@@ -1,57 +1,33 @@
+# ceiling-pilot-20261110-v1
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
 
 
-# ============================================================
-# CareWave test-room geometry
-# ============================================================
-#
-# Radar coordinate system:
-#   X: left (-) <---- 0 ----> right (+)
-#   Y: radar (0) -----------> upper/opposite wall (3.8 m)
-#
-# Room:
-#   width  = 3.6 m
-#   depth  = 3.8 m
-#
-ROOM_X_MIN = -1.8
-ROOM_X_MAX = 1.8
-ROOM_Y_MIN = 0.0
-ROOM_Y_MAX = 3.8
+from room_geometry import (
+    ROOM_X_MIN,
+    ROOM_X_MAX,
+    ROOM_Y_MIN,
+    ROOM_Y_MAX,
+    BED_X_MIN,
+    BED_X_MAX,
+    BED_Y_MIN,
+    BED_Y_MAX,
+    EXIT_X_MIN,
+    EXIT_X_MAX,
+    EXIT_Y_MIN,
+    EXIT_Y_MAX,
+    EXIT_APPROACH_X_MIN,
+    EXIT_APPROACH_X_MAX,
+    EXIT_APPROACH_Y_MIN,
+    EXIT_APPROACH_Y_MAX,
+    BATHROOM_X_MIN,
+    BATHROOM_X_MAX,
+    BATHROOM_Y_MIN,
+    BATHROOM_Y_MAX,
+)
 
-
-# ============================================================
-# Bed zone
-# ============================================================
-#
-# Horizontal bed, attached to the left wall.
-#
-BED_X_MIN = -1.8
-BED_X_MAX = 0.0
-BED_Y_MIN = 1.6
-BED_Y_MAX = 2.6
-
-
-# ============================================================
-# Test-room door / exit zone
-# ============================================================
-#
-# The test exit is the passage between:
-#   - the air purifier near the upper wall
-#   - the movable whiteboard / partition on the right
-#
-EXIT_X_MIN = 0.95
-EXIT_X_MAX = 1.65
-EXIT_Y_MIN = 2.90
-EXIT_Y_MAX = 3.70
-
-# A broader approach area helps preserve an exit transition when the
-# 1-second aggregation jumps from ROOM directly to OUTSIDE.
-EXIT_APPROACH_X_MIN = 0.70
-EXIT_APPROACH_X_MAX = 1.80
-EXIT_APPROACH_Y_MIN = 2.55
 
 # Movement threshold already used by CareWave.
 EXIT_SPEED_MIN = 0.10
@@ -141,6 +117,12 @@ class OccupancyManager:
             return "BED"
 
         if (
+            BATHROOM_X_MIN <= x <= BATHROOM_X_MAX
+            and BATHROOM_Y_MIN <= y <= BATHROOM_Y_MAX
+        ):
+            return "BATHROOM"
+
+        if (
             EXIT_X_MIN <= x <= EXIT_X_MAX
             and EXIT_Y_MIN <= y <= EXIT_Y_MAX
         ):
@@ -164,7 +146,7 @@ class OccupancyManager:
 
         return (
             EXIT_APPROACH_X_MIN <= x <= EXIT_APPROACH_X_MAX
-            and y >= EXIT_APPROACH_Y_MIN
+            and EXIT_APPROACH_Y_MIN <= y <= EXIT_APPROACH_Y_MAX
         )
 
     def _get_state(
@@ -375,7 +357,7 @@ class OccupancyManager:
         # ROOM / BED:
         # definitely back inside -> cancel exit state.
         # ----------------------------------------------------
-        if zone in {"ROOM", "BED"}:
+        if zone in {"ROOM", "BED", "BATHROOM"}:
             state.present = True
 
             self._set_trusted_target(

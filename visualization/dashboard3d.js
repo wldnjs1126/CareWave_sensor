@@ -1,23 +1,27 @@
+// ceiling-pilot-20261110-v1
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 
-const SENSOR_HEIGHT = 0.75;
-
-const ROOM_X_MIN = -1.8;
-const ROOM_X_MAX = 1.8;
-const ROOM_Y_MIN = 0.0;
-const ROOM_Y_MAX = 3.8;
-
-const BED_X_MIN = -1.8;
-const BED_X_MAX = 0.0;
-const BED_Y_MIN = 1.6;
-const BED_Y_MAX = 2.6;
-
-const EXIT_X_MIN = 0.95;
-const EXIT_X_MAX = 1.65;
-const EXIT_Y_MIN = 2.90;
-const EXIT_Y_MAX = 3.70;
+const G = window.CAREWAVE_ROOM;
+if (!G) throw new Error("room_config.js must load before dashboard3d.js");
+const SENSOR_HEIGHT = G.sensor.height;
+const ROOM_X_MIN = G.room.xmin;
+const ROOM_X_MAX = G.room.xmax;
+const ROOM_Y_MIN = G.room.ymin;
+const ROOM_Y_MAX = G.room.ymax;
+const BED_X_MIN = G.bed.xmin;
+const BED_X_MAX = G.bed.xmax;
+const BED_Y_MIN = G.bed.ymin;
+const BED_Y_MAX = G.bed.ymax;
+const EXIT_X_MIN = G.entrance.xmin;
+const EXIT_X_MAX = G.entrance.xmax;
+const EXIT_Y_MIN = G.entrance.ymin;
+const EXIT_Y_MAX = G.entrance.ymax;
+const BATHROOM_X_MIN = G.bathroom.xmin;
+const BATHROOM_X_MAX = G.bathroom.xmax;
+const BATHROOM_Y_MIN = G.bathroom.ymin;
+const BATHROOM_Y_MAX = G.bathroom.ymax;
 
 const MAX_RENDER_POINTS = 96;
 
@@ -93,7 +97,7 @@ controls.dampingFactor = 0.08;
 controls.target.set(
     0,
     1.0,
-    -1.9
+    0.0
 );
 controls.minDistance = 2.2;
 controls.maxDistance = 12.0;
@@ -109,7 +113,7 @@ function radarToThree(
 ) {
     return new THREE.Vector3(
         Number(x),
-        SENSOR_HEIGHT + Number(z),
+        Number(z),
         -Number(y)
     );
 }
@@ -146,9 +150,9 @@ function addRoomFloor() {
         -Math.PI / 2;
 
     floor.position.set(
+        (ROOM_X_MIN + ROOM_X_MAX) / 2,
         0,
-        0,
-        -depth / 2
+        -(ROOM_Y_MIN + ROOM_Y_MAX) / 2
     );
 
     scene.add(floor);
@@ -156,27 +160,27 @@ function addRoomFloor() {
 
     const grid =
         new THREE.GridHelper(
-            4.4,
-            22,
+            Math.max(width, depth),
+            Math.ceil(Math.max(width, depth) / 0.2),
             0x65717c,
             0x303942
         );
 
     grid.position.set(
-        0,
+        (ROOM_X_MIN + ROOM_X_MAX) / 2,
         0.006,
-        -2.0
+        -(ROOM_Y_MIN + ROOM_Y_MAX) / 2
     );
 
     scene.add(grid);
 
 
     const outlinePoints = [
-        new THREE.Vector3(ROOM_X_MIN, 0.02, 0),
-        new THREE.Vector3(ROOM_X_MAX, 0.02, 0),
+        new THREE.Vector3(ROOM_X_MIN, 0.02, -ROOM_Y_MIN),
+        new THREE.Vector3(ROOM_X_MAX, 0.02, -ROOM_Y_MIN),
         new THREE.Vector3(ROOM_X_MAX, 0.02, -ROOM_Y_MAX),
         new THREE.Vector3(ROOM_X_MIN, 0.02, -ROOM_Y_MAX),
-        new THREE.Vector3(ROOM_X_MIN, 0.02, 0),
+        new THREE.Vector3(ROOM_X_MIN, 0.02, -ROOM_Y_MIN),
     ];
 
     const outlineGeometry =
@@ -202,7 +206,7 @@ function addBed() {
     const depth =
         BED_Y_MAX - BED_Y_MIN;
 
-    const bedHeight = 0.62;
+    const bedHeight = G.bed.height;
 
     const geometry =
         new THREE.BoxGeometry(
@@ -295,6 +299,19 @@ function addExitZone() {
 }
 
 
+function addBathroomZone() {
+    const width = BATHROOM_X_MAX - BATHROOM_X_MIN;
+    const depth = BATHROOM_Y_MAX - BATHROOM_Y_MIN;
+    const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(width, depth),
+        new THREE.MeshBasicMaterial({color: 0x42b9bc, transparent: true, opacity: 0.28, side: THREE.DoubleSide})
+    );
+    plane.rotation.x = -Math.PI / 2;
+    plane.position.set((BATHROOM_X_MIN + BATHROOM_X_MAX) / 2,
+        0.018, -(BATHROOM_Y_MIN + BATHROOM_Y_MAX) / 2);
+    scene.add(plane);
+}
+
 function addRadar() {
     const geometry =
         new THREE.SphereGeometry(
@@ -341,7 +358,7 @@ function addRadar() {
         );
 
     direction.rotation.x =
-        -Math.PI / 2;
+        Math.PI; // sensor points vertically downward
 
     direction.position.set(
         0,
@@ -356,6 +373,7 @@ function addRadar() {
 addRoomFloor();
 addBed();
 addExitZone();
+addBathroomZone();
 addRadar();
 
 
@@ -413,8 +431,8 @@ function updatePointCloud(points) {
         // OUTSIDE clutter/ghosts remain visible for debugging.
         if (
             x < -4.2 || x > 4.2 ||
-            y < -0.2 || y > 8.2 ||
-            z < -3.0 || z > 3.0
+            y < -3.5 || y > 3.5 ||
+            z < -0.5 || z > (SENSOR_HEIGHT + 0.8)
         ) {
             continue;
         }
